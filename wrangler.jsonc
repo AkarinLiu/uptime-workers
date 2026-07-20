@@ -24,7 +24,7 @@
 		{
 			"binding": "DB",
 			"database_name": "uptime-db",
-			"database_id": "placeholder-d1-id"
+			"database_id": "f785fd17-b7f9-47b6-83b9-fdb837a8e5f6"
 		}
 	],
 	"triggers": {
