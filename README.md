@@ -1,42 +1,32 @@
 # uptime-workers
 
-This template should help get you started developing with Vue 3 in Vite.
+Uptime monitoring service running on Cloudflare Workers + D1.
 
-## Recommended IDE Setup
-
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
-
-## Recommended Browser Setup
-
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
-
-## Type Support for `.vue` Imports in TS
-
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
+## Setup
 
 ```sh
 npm install
+npx wrangler d1 create uptime-db           # create D1 database
+npx wrangler d1 execute uptime-db --local  # or --remote for production
 ```
 
-### Compile and Hot-Reload for Development
+Update `database_id` in `wrangler.jsonc` after creating the D1 database.
+
+## Commands
 
 ```sh
-npm run dev
+npm run dev        # Vite dev server with local Worker binding emulation
+npm run build      # type-check then production build
+npm run type-check # vue-tsc --build (no emit)
+npm run preview    # build + wrangler dev (local Worker runtime)
+npm run deploy     # build + wrangler deploy
 ```
 
-### Type-Check, Compile and Minify for Production
+## Architecture
 
-```sh
-npm run build
-```
+Single Cloudflare Worker serving a Vue 3 SPA and JSON API. Cron trigger every minute runs uptime checks against all enabled monitors and stores results in D1.
+
+## Environment
+
+- `DB` — D1 database binding (`uptime-db`)
+- `ADMIN_TOKEN` — worker variable (change in production)

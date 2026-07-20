@@ -12,6 +12,8 @@ const { token } = useAuth()
 const { t } = useI18n()
 const monitors = ref<any[]>([])
 const announcements = ref<any[]>([])
+const users = ref<any[]>([])
+const logStats = ref<any[]>([])
 const loading = ref(true)
 const showForm = ref(false)
 const editMonitor = ref<any>(null)
@@ -19,6 +21,9 @@ const showAnnForm = ref(false)
 const editAnn = ref<any>(null)
 const annTitle = ref('')
 const annContent = ref('')
+const showUserForm = ref(false)
+const newUsername = ref('')
+const newPassword = ref('')
 
 function isUp(m: any) {
   return m.last_status_code != null && m.last_status_code >= 200 && m.last_status_code < 400 && !m.last_error
@@ -45,6 +50,16 @@ async function loadMonitors() {
 async function loadAnnouncements() {
   const res = await fetch('/api/announcements', { headers: headers() })
   announcements.value = await res.json()
+}
+
+async function loadUsers() {
+  const res = await fetch('/api/users', { headers: headers() })
+  if (res.ok) users.value = await res.json()
+}
+
+async function loadLogStats() {
+  const res = await fetch('/api/checks/stats', { headers: headers() })
+  if (res.ok) logStats.value = await res.json()
 }
 
 async function toggle(monitor: any) {
@@ -101,7 +116,56 @@ async function saveAnn() {
 
 async function onSaved() { showForm.value = false; editMonitor.value = null; await loadMonitors() }
 
-onMounted(async () => { await loadMonitors(); await loadAnnouncements() })
+async function createUser() {
+  if (!newUsername.value || !newPassword.value) return
+  const res = await fetch('/api/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers() },
+    body: JSON.stringify({ username: newUsername.value, password: newPassword.value }),
+  })
+  if (res.ok) {
+    showUserForm.value = false
+    newUsername.value = ''
+    newPassword.value = ''
+    await loadUsers()
+  } else {
+    const data = await res.json()
+    alert(data.error || t('error'))
+  }
+}
+
+async function removeUser(u: any) {
+  if (!confirm(t('confirmDelete', { name: u.username }))) return
+  const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE', headers: headers() })
+  if (res.ok) {
+    await loadUsers()
+  } else {
+    const data = await res.json()
+    alert(data.error || t('error'))
+  }
+}
+
+function getLogCount(monitorId: number): number {
+  return (logStats.value.find((s: any) => s.id === monitorId)?.log_count) ?? 0
+}
+
+async function purgeLogs(monitorId?: number) {
+  const body = monitorId ? { monitor_id: monitorId } : {}
+  const res = await fetch('/api/checks/purge', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers() },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json()
+  if (res.ok) {
+    await loadLogStats()
+    if (data.deleted > 0) {
+      // ponytail: brief toast would be nice here, alert is fine for now
+    }
+  }
+}
+
+onMounted(async () => { await loadMonitors(); await loadAnnouncements(); await loadUsers(); await loadLogStats() })
 </script>
 
 <template>
@@ -141,8 +205,33 @@ onMounted(async () => { await loadMonitors(); await loadAnnouncements() })
     </section>
 
     <section class="section">
+      <h2>{{ t('userManagement') }}</h2>
+      <button class="add-btn" @click="showUserForm = true; newUsername = ''; newPassword = ''">{{ t('newUser') }}</button>
+      <div v-if="showUserForm" class="ann-form">
+        <label>{{ t('username') }}<input v-model="newUsername" type="text" /></label>
+        <label>{{ t('password') }}<input v-model="newPassword" type="password" /></label>
+        <div class="form-actions">
+          <button class="save-btn" @click="createUser">{{ t('save') }}</button>
+          <button @click="showUserForm = false">{{ t('cancel') }}</button>
+        </div>
+      </div>
+      <div v-for="u in users" :key="u.id" class="ann-card">
+        <div class="ann-info">
+          <strong>{{ u.username }}</strong>
+          <span class="user-role">{{ u.role === 'admin' ? t('admin_') : t('user_') }}</span>
+        </div>
+        <div class="ann-actions">
+          <button class="danger" @click="removeUser(u)">{{ t('delete') }}</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
       <h2>{{ t('status') }}</h2>
-      <button class="add-btn" @click="showForm = true; editMonitor = null">{{ t('addMonitor') }}</button>
+      <div class="section-header">
+        <button class="add-btn" @click="showForm = true; editMonitor = null">{{ t('addMonitor') }}</button>
+        <button class="purge-btn" @click="purgeLogs()">{{ t('purgeAll') }}</button>
+      </div>
 
       <MonitorForm v-if="showForm" :monitor="editMonitor" @saved="onSaved" @cancel="showForm = false; editMonitor = null" />
 
@@ -158,11 +247,13 @@ onMounted(async () => { await loadMonitors(); await loadAnnouncements() })
             <a :href="m.url" target="_blank">{{ m.url }}</a>
             <span>{{ isUp(m) ? `${m.last_response_time_ms}ms` : (m.last_error || t('nA')) }}</span>
             <span>{{ t('checked') }} {{ timeAgo(m.last_checked_at) }}</span>
+            <span class="log-info">{{ getLogCount(m.id) }} {{ t('logs') }} &middot; {{ t('untilRetention', { n: m.retention_days }) }}</span>
           </div>
           <div class="card-actions">
             <button @click="router.push(`/admin/monitors/${m.id}`)">{{ t('history') }}</button>
             <button @click="showForm = true; editMonitor = m">{{ t('edit') }}</button>
             <button @click="toggle(m)">{{ m.enabled ? t('pause') : t('resume') }}</button>
+            <button @click="purgeLogs(m.id)">{{ t('purgeSingle') }}</button>
             <button class="danger" @click="remove(m)">{{ t('delete') }}</button>
           </div>
         </div>
@@ -183,8 +274,18 @@ h2 { font-size: 1.1rem; margin-bottom: 0.75rem; color: var(--color-heading); }
   padding: 0.5rem 1rem;
   border-radius: 0.25rem;
   cursor: pointer;
-  margin-bottom: 1rem;
 }
+.section-header { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.purge-btn {
+  background: var(--color-background);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+.log-info { opacity: 0.6; font-size: 0.8rem; }
+.user-role { font-size: 0.75rem; opacity: 0.6; margin-left: 0.5rem; }
 .grid { display: flex; flex-direction: column; gap: 0.75rem; }
 .card { border: 1px solid var(--color-border); border-radius: 0.5rem; padding: 1rem; }
 .card-top { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; }

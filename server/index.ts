@@ -1,8 +1,9 @@
 import { initDb } from "./db";
-import { handleMonitors, handleChecks } from "./api/monitors";
+import { handleMonitors, handleChecks, handleCheckStats } from "./api/monitors";
 import { handleStatus } from "./api/status";
 import { handleAuth } from "./api/auth";
 import { handleAnnouncements } from "./api/announcements";
+import { handleUsers } from "./api/users";
 import { runChecks } from "./cron";
 
 let dbInit: Promise<void> | null = null;
@@ -31,12 +32,17 @@ export default {
       return handleAnnouncements(request, env);
     }
 
+    if (url.pathname.startsWith("/api/users")) {
+      return handleUsers(request, env);
+    }
+
     if (url.pathname.startsWith("/api/monitors")) {
       return handleMonitors(request, env);
     }
 
-    if (url.pathname === "/api/checks") {
-      return handleChecks(request, env);
+    if (url.pathname.startsWith("/api/checks")) {
+      if (url.pathname === "/api/checks") return handleChecks(request, env);
+      return handleCheckStats(request, env);
     }
 
     return new Response(null, { status: 404 });

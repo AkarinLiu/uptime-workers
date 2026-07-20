@@ -200,3 +200,47 @@ export async function handleChecks(
     uptime_pct: uptime && uptime.total > 0 ? Math.round((uptime.up / uptime.total) * 10000) / 100 : null,
   });
 }
+
+export async function handleCheckStats(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const db = env.DB;
+
+  const session = await verifySession(request, db);
+  if (!session || session.role !== "admin") return json({ error: "Unauthorized" }, 401);
+
+  if (url.pathname === "/api/checks/stats" && request.method === "GET") {
+    const stats = await db.prepare(`
+      SELECT m.id, m.name, m.retention_days,
+        COUNT(c.id) as log_count,
+        MIN(c.created_at) as oldest_log
+      FROM monitors m
+      LEFT JOIN checks c ON c.monitor_id = m.id
+      GROUP BY m.id
+      ORDER BY m.name
+    `).all();
+    return json(stats.results);
+  }
+
+  if (url.pathname === "/api/checks/purge" && request.method === "POST") {
+    const body = await request.json<{ monitor_id?: number }>();
+    if (body.monitor_id) {
+      const monitor = await db.prepare("SELECT retention_days FROM monitors WHERE id = ?").bind(body.monitor_id).first<{ retention_days: number }>();
+      if (!monitor) return json({ error: "Not found" }, 404);
+      const result = await db.prepare(
+        "DELETE FROM checks WHERE monitor_id = ? AND created_at < datetime('now', ?)"
+      ).bind(body.monitor_id, `-${monitor.retention_days} days`).run();
+      return json({ deleted: result.meta.changes });
+    }
+    const monitors = await db.prepare("SELECT id, retention_days FROM monitors").all<{ id: number; retention_days: number }>();
+    let total = 0;
+    for (const m of monitors.results) {
+      const result = await db.prepare(
+        "DELETE FROM checks WHERE monitor_id = ? AND created_at < datetime('now', ?)"
+      ).bind(m.id, `-${m.retention_days} days`).run();
+      total += result.meta.changes;
+    }
+    return json({ deleted: total });
+  }
+
+  return json({ error: "Not found" }, 404);
+}
