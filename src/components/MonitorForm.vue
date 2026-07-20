@@ -9,6 +9,7 @@ const props = defineProps<{ monitor: any | null }>()
 const emit = defineEmits(['saved', 'cancel'])
 
 const name = ref(props.monitor?.name ?? '')
+const slug = ref(props.monitor?.slug ?? '')
 const url = ref(props.monitor?.url ?? '')
 const interval = ref(props.monitor?.interval_seconds ?? 60)
 const retention = ref(props.monitor?.retention_days ?? 30)
@@ -26,13 +27,15 @@ async function submit() {
     const isEdit = !!props.monitor
     const method = isEdit ? 'PUT' : 'POST'
     const path = isEdit ? `/api/monitors/${props.monitor.id}` : '/api/monitors'
+    const body: Record<string, unknown> = { name: name.value, url: url.value, interval_seconds: interval.value, retention_days: retention.value }
+    if (slug.value) body.slug = slug.value
     const res = await fetch(path, {
       method,
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token.value}`,
       },
-      body: JSON.stringify({ name: name.value, url: url.value, interval_seconds: interval.value, retention_days: retention.value }),
+      body: JSON.stringify(body),
     })
     if (!res.ok) {
       const data = await res.json()
@@ -53,6 +56,7 @@ async function submit() {
     <h3>{{ monitor ? t('editMonitor') : t('newMonitor') }}</h3>
     <div v-if="error" class="form-error">{{ error }}</div>
     <label>{{ t('name') }}<input v-model="name" type="text" required /></label>
+    <label>Slug <span class="md-hint">({{ t('optional') }})</span><input v-model="slug" type="text" placeholder="auto" /></label>
     <label>{{ t('url') }}<input v-model="url" type="url" placeholder="https://example.com" required /></label>
     <label>{{ t('intervalSeconds') }}<input v-model.number="interval" type="number" min="10" /></label>
     <label>{{ t('retentionDays') }}<input v-model.number="retention" type="number" min="1" /></label>

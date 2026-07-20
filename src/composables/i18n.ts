@@ -69,6 +69,7 @@ const messages: Record<string, Record<string, string>> = {
     purgeSingle: '清理',
     untilRetention: '保留 {n} 天',
     oldest: '最早',
+    optional: '可选',
   },
   en: {
     status: 'Status',
@@ -138,6 +139,7 @@ const messages: Record<string, Record<string, string>> = {
     purgeSingle: 'Purge',
     untilRetention: '{n}d retention',
     oldest: 'Oldest',
+    optional: 'optional',
   },
 }
 

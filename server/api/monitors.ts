@@ -23,10 +23,12 @@ function json(data: unknown, status = 200) {
 }
 
 function slugify(name: string): string {
-  return name
+  let slug = name
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-")
     .replace(/^-|-$/g, "");
+  if (!slug) slug = `monitor-${Date.now()}`;
+  return slug;
 }
 
 async function requireAuth(request: Request, db: D1Database): Promise<Response | null> {
@@ -36,20 +38,20 @@ async function requireAuth(request: Request, db: D1Database): Promise<Response |
   return null;
 }
 
-async function getSlugByNameAndId(
-  db: D1Database,
-  name: string,
-  id?: number
-): Promise<{ slug: string; ok: boolean }> {
-  let slug = slugify(name);
-  const result = await db
+async function resolveSlug(db: D1Database, name: string, customSlug?: string, currentId?: number): Promise<string | null> {
+  let slug = customSlug ?? slugify(name);
+  if (!slug) return null;
+  slug = slug.replace(/[^a-z0-9\u4e00-\u9fff-]/g, "-").replace(/^-|-$/g, "");
+  if (!slug) return null;
+  const existing = await db
     .prepare("SELECT id FROM monitors WHERE slug = ? AND id != ?")
-    .bind(slug, id ?? -1)
+    .bind(slug, currentId ?? -1)
     .first<{ id: number }>();
-  if (result) {
+  if (existing) {
+    if (customSlug) return null;
     slug = `${slug}-${Date.now()}`;
   }
-  return { slug, ok: true };
+  return slug;
 }
 
 export async function handleMonitors(
@@ -86,24 +88,18 @@ export async function handleMonitors(
     const body = await request.json<{
       name: string;
       url: string;
+      slug?: string;
       interval_seconds?: number;
       retention_days?: number;
     }>();
-    if (!body.name || !body.url) {
-      return json({ error: "name and url are required" }, 400);
-    }
-    const { slug } = await getSlugByNameAndId(db, body.name);
+    if (!body.name || !body.url) return json({ error: "name and url are required" }, 400);
+
+    const slug = await resolveSlug(db, body.name, body.slug);
+    if (!slug) return json({ error: "slug invalid or already taken" }, 400);
+
     const result = await db
-      .prepare(
-        "INSERT INTO monitors (slug, name, url, interval_seconds, retention_days) VALUES (?, ?, ?, ?, ?)"
-      )
-      .bind(
-        slug,
-        body.name,
-        body.url,
-        body.interval_seconds ?? 60,
-        body.retention_days ?? 30
-      )
+      .prepare("INSERT INTO monitors (slug, name, url, interval_seconds, retention_days) VALUES (?, ?, ?, ?, ?)")
+      .bind(slug, body.name, body.url, body.interval_seconds ?? 60, body.retention_days ?? 30)
       .run();
     const monitor = await db
       .prepare("SELECT * FROM monitors WHERE id = ?")
@@ -113,40 +109,26 @@ export async function handleMonitors(
   }
 
   if (request.method === "PUT" && id) {
-    const existing = await db
-      .prepare("SELECT * FROM monitors WHERE id = ?")
-      .bind(id)
-      .first<Monitor>();
+    const existing = await db.prepare("SELECT * FROM monitors WHERE id = ?").bind(id).first<Monitor>();
     if (!existing) return json({ error: "Not found" }, 404);
 
     const body = await request.json<{
-      name?: string;
-      url?: string;
-      interval_seconds?: number;
-      retention_days?: number;
+      name?: string; url?: string; slug?: string;
+      interval_seconds?: number; retention_days?: number;
       enabled?: number;
     }>();
 
     const name = body.name ?? existing.name;
     let slug = existing.slug;
-    if (body.name && body.name !== existing.name) {
-      const s = await getSlugByNameAndId(db, body.name, id);
-      slug = s.slug;
+    if (body.slug !== undefined || (body.name && body.name !== existing.name)) {
+      const resolved = await resolveSlug(db, name, body.slug, id);
+      if (!resolved) return json({ error: "slug invalid or already taken" }, 400);
+      slug = resolved;
     }
 
     await db
-      .prepare(
-        `UPDATE monitors SET slug=?, name=?, url=?, interval_seconds=?, retention_days=?, enabled=? WHERE id=?`
-      )
-      .bind(
-        slug,
-        name,
-        body.url ?? existing.url,
-        body.interval_seconds ?? existing.interval_seconds,
-        body.retention_days ?? existing.retention_days,
-        body.enabled ?? existing.enabled,
-        id
-      )
+      .prepare("UPDATE monitors SET slug=?, name=?, url=?, interval_seconds=?, retention_days=?, enabled=? WHERE id=?")
+      .bind(slug, name, body.url ?? existing.url, body.interval_seconds ?? existing.interval_seconds, body.retention_days ?? existing.retention_days, body.enabled ?? existing.enabled, id)
       .run();
 
     const monitor = await db
