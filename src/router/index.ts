@@ -1,23 +1,53 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import HomeView from '../views/HomeView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
       path: '/',
-      name: 'home',
-      component: HomeView,
+      redirect: '/status',
     },
     {
-      path: '/about',
-      name: 'about',
-      // route level code-splitting
-      // this generates a separate chunk (About.[hash].js) for this route
-      // which is lazy-loaded when the route is visited.
-      component: () => import('../views/AboutView.vue'),
+      path: '/status',
+      name: 'status',
+      component: () => import('../views/StatusView.vue'),
+    },
+    {
+      path: '/status/:slug',
+      name: 'status-detail',
+      component: () => import('../views/StatusView.vue'),
+    },
+    {
+      path: '/login',
+      name: 'login',
+      component: () => import('../views/LoginView.vue'),
+    },
+    {
+      path: '/admin',
+      name: 'admin',
+      component: () => import('../views/DashboardView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/admin/monitors/:id',
+      name: 'monitor-detail',
+      component: () => import('../views/MonitorDetailView.vue'),
+      meta: { requiresAuth: true },
     },
   ],
+})
+
+router.beforeEach(async (to) => {
+  if (to.meta.requiresAuth) {
+    const { useAuth } = await import('../composables/auth')
+    const { checkAuth, role, logout } = useAuth()
+    const ok = await checkAuth()
+    if (!ok) return { name: 'login', query: { redirect: to.fullPath } }
+    if (role.value !== 'admin') {
+      await logout()
+      return { name: 'login', query: { redirect: to.fullPath } }
+    }
+  }
 })
 
 export default router

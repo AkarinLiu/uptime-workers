@@ -1,0 +1,139 @@
+import { ref } from 'vue'
+
+const messages: Record<string, Record<string, string>> = {
+  zh: {
+    status: '状态',
+    login: '登录',
+    logout: '退出',
+    admin: '管理',
+    register: '注册',
+    dashboard: '仪表盘',
+    addMonitor: '+ 添加监测',
+    history: '历史',
+    edit: '编辑',
+    pause: '暂停',
+    resume: '恢复',
+    delete: '删除',
+    loading: '加载中...',
+    error: '错误',
+    details: '详情',
+    allStatus: '← 全部状态',
+    back: '← 返回',
+    time: '时间',
+    response: '响应',
+    checked: '检测于',
+    daysAgo: '{n}天前',
+    hoursAgo: '{n}小时前',
+    minsAgo: '{n}分钟前',
+    secsAgo: '{n}秒前',
+    neverChecked: '从未检测',
+    uptime7d: '7日可用率',
+    uptimeOverall: '总可用率',
+    interval: '检测间隔',
+    retention: '数据保留',
+    nA: '无数据',
+    unknown: '未知',
+    name: '名称',
+    url: '网址',
+    intervalSeconds: '间隔(秒)',
+    retentionDays: '保留(天)',
+    save: '保存',
+    cancel: '取消',
+    saving: '保存中...',
+    newMonitor: '新建监测',
+    editMonitor: '编辑监测',
+    username: '用户名',
+    password: '密码',
+    pleaseFillAll: '请填写所有字段',
+    invalidCredentials: '用户名或密码错误',
+    registerSuccess: '注册成功',
+    alreadyHaveAccount: '已有账号？登录',
+    noAccount: '没有账号？注册',
+    confirmDelete: '删除 "{name}"？',
+    announcements: '维护公告',
+    newAnnouncement: '+ 新公告',
+    title: '标题',
+    content: '内容',
+    active: '启用',
+    announcement: '公告',
+  },
+  en: {
+    status: 'Status',
+    login: 'Login',
+    logout: 'Logout',
+    admin: 'Admin',
+    register: 'Register',
+    dashboard: 'Dashboard',
+    addMonitor: '+ Add Monitor',
+    history: 'History',
+    edit: 'Edit',
+    pause: 'Pause',
+    resume: 'Resume',
+    delete: 'Delete',
+    loading: 'Loading...',
+    error: 'Error',
+    details: 'Details',
+    allStatus: '← All status',
+    back: '← Back',
+    time: 'Time',
+    response: 'Response',
+    checked: 'Checked',
+    daysAgo: '{n}d ago',
+    hoursAgo: '{n}h ago',
+    minsAgo: '{n}m ago',
+    secsAgo: '{n}s ago',
+    neverChecked: 'Never',
+    uptime7d: '7-day uptime',
+    uptimeOverall: 'Overall uptime',
+    interval: 'Interval',
+    retention: 'Retention',
+    nA: 'N/A',
+    unknown: 'Unknown',
+    name: 'Name',
+    url: 'URL',
+    intervalSeconds: 'Interval (seconds)',
+    retentionDays: 'Retention (days)',
+    save: 'Save',
+    cancel: 'Cancel',
+    saving: 'Saving...',
+    newMonitor: 'New Monitor',
+    editMonitor: 'Edit Monitor',
+    username: 'Username',
+    password: 'Password',
+    pleaseFillAll: 'Please fill all fields',
+    invalidCredentials: 'Invalid credentials',
+    registerSuccess: 'Registration successful',
+    alreadyHaveAccount: 'Already have an account? Login',
+    noAccount: "Don't have an account? Register",
+    confirmDelete: 'Delete "{name}"?',
+    announcements: 'Announcements',
+    newAnnouncement: '+ New',
+    title: 'Title',
+    content: 'Content',
+    active: 'Active',
+    announcement: 'Announcement',
+  },
+}
+
+const savedLocale = localStorage.getItem('locale')
+const browserLocale = navigator.language.startsWith('zh') ? 'zh' : 'en'
+const locale = ref<string>(savedLocale || browserLocale || 'en')
+
+export function useI18n() {
+  function t(key: string, params?: Record<string, string | number>): string {
+    let msg = messages[locale.value]?.[key] || messages.en![key] || key
+    if (params) {
+      for (const [k, v] of Object.entries(params)) {
+        msg = msg.replace(`{${k}}`, String(v))
+      }
+    }
+    return msg
+  }
+
+  function setLocale(lang: string) {
+    locale.value = lang
+    localStorage.setItem('locale', lang)
+  }
+
+  return { locale, t, setLocale }
+}
