@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from '../composables/i18n'
 import { renderMarkdown } from '../composables/markdown'
@@ -15,6 +15,9 @@ const loading = ref(false)
 const error = ref('')
 const chartRange = ref('24h')
 const chartLoading = ref(false)
+const lastUpdated = ref<string | null>(null)
+const polling = ref(false)
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
 function isUp(m: any) {
   return m.last_status_code != null && m.last_status_code >= 200 && m.last_status_code < 400 && !m.last_error
@@ -40,10 +43,7 @@ async function load(slug: string | undefined) {
     if (slug) {
       await loadDetail(slug)
     } else {
-      const res = await fetch('/api/status/')
-      const data = await res.json()
-      monitors.value = data.monitors || data
-      announcements.value = data.announcements || []
+      await loadList()
     }
   } catch (e: any) {
     error.value = e.message
@@ -52,12 +52,23 @@ async function load(slug: string | undefined) {
   }
 }
 
+async function loadList() {
+  const res = await fetch('/api/status/')
+  const data = await res.json()
+  monitors.value = data.monitors || data
+  announcements.value = data.announcements || []
+  lastUpdated.value = new Date().toISOString()
+}
+
 async function loadDetail(slug: string) {
   chartLoading.value = true
   try {
     const res = await fetch(`/api/status/${slug}?range=${chartRange.value}`)
     const data = await res.json()
-    if (res.ok) detail.value = data
+    if (res.ok) {
+      detail.value = data
+      lastUpdated.value = new Date().toISOString()
+    }
     else error.value = data.error || t('error')
   } catch (e: any) {
     error.value = e.message
@@ -66,12 +77,42 @@ async function loadDetail(slug: string) {
   }
 }
 
+async function poll() {
+  if (polling.value) return
+  polling.value = true
+  try {
+    const slug = route.params.slug as string | undefined
+    if (slug) {
+      await loadDetail(slug)
+    } else {
+      await loadList()
+    }
+  } catch { /* silent on poll errors */ }
+  finally { polling.value = false }
+}
+
+function startPolling() {
+  stopPolling()
+  const slug = !!route.params.slug
+  pollTimer = setInterval(poll, slug ? 15_000 : 30_000)
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+}
+
 function onRangeChange(range: string) {
   chartRange.value = range
   if (route.params.slug) loadDetail(route.params.slug as string)
 }
 
-watch(() => route.params.slug, (slug) => load(slug as string | undefined), { immediate: true })
+watch(() => route.params.slug, (slug) => {
+  stopPolling()
+  load(slug as string | undefined)
+  startPolling()
+}, { immediate: true })
+
+onBeforeUnmount(stopPolling)
 </script>
 
 <template>
@@ -86,23 +127,30 @@ watch(() => route.params.slug, (slug) => load(slug as string | undefined), { imm
         </div>
       </div>
 
-      <div v-if="loading">{{ t('loading') }}</div>
+      <div v-if="loading && monitors.length === 0" class="loading-shimmer">
+        <div v-for="i in 3" :key="i" class="shimmer-card"></div>
+      </div>
       <div v-else-if="error" class="error">{{ error }}</div>
       <div v-else class="grid">
-        <div v-for="m in monitors" :key="m.id" class="card">
-          <div class="card-top">
-            <StatusBadge :is-up="isUp(m)" />
-            <strong>{{ m.name }}</strong>
-            <span class="type-badge">{{ t(m.type || 'http') }}</span>
+        <TransitionGroup name="card-list">
+          <div v-for="m in monitors" :key="m.id" class="card">
+            <div class="card-top">
+              <StatusBadge :is-up="isUp(m)" />
+              <strong>{{ m.name }}</strong>
+              <span class="type-badge">{{ t(m.type || 'http') }}</span>
+            </div>
+            <div class="card-meta">
+              <a v-if="isHttp(m)" :href="m.url" target="_blank">{{ m.url }}</a>
+              <span v-else class="mono">tcp://{{ m.url }}</span>
+              <span>{{ isUp(m) ? `${m.last_response_time_ms}ms` : (m.last_error || t('unknown')) }}</span>
+              <span>{{ t('checked') }} {{ timeAgo(m.last_checked_at) }}</span>
+            </div>
+            <router-link :to="`/status/${m.slug}`" class="detail-link">{{ t('details') }}</router-link>
           </div>
-          <div class="card-meta">
-            <a v-if="isHttp(m)" :href="m.url" target="_blank">{{ m.url }}</a>
-            <span v-else class="mono">tcp://{{ m.url }}</span>
-            <span>{{ isUp(m) ? `${m.last_response_time_ms}ms` : (m.last_error || t('unknown')) }}</span>
-            <span>{{ t('checked') }} {{ timeAgo(m.last_checked_at) }}</span>
-          </div>
-          <router-link :to="`/status/${m.slug}`" class="detail-link">{{ t('details') }}</router-link>
-        </div>
+        </TransitionGroup>
+      </div>
+      <div v-if="lastUpdated" class="last-updated" :key="lastUpdated">
+        {{ t('lastUpdated') }}: {{ new Date(lastUpdated).toLocaleTimeString() }}
       </div>
     </template>
     <template v-else>
@@ -121,6 +169,9 @@ watch(() => route.params.slug, (slug) => load(slug as string | undefined), { imm
           @range-change="onRangeChange"
         />
         <div v-if="chartLoading" class="chart-loading">{{ t('loading') }}</div>
+        <div v-if="lastUpdated" class="last-updated" :key="lastUpdated">
+          {{ t('lastUpdated') }}: {{ new Date(lastUpdated).toLocaleTimeString() }}
+        </div>
         <router-link to="/status" class="back-link">{{ t('allStatus') }}</router-link>
       </div>
     </template>
@@ -141,7 +192,11 @@ h1 { font-size: 1.5rem; margin-bottom: 1rem; color: var(--color-heading); }
 }
 .announcement strong { color: var(--color-heading); }
 .grid { display: flex; flex-direction: column; gap: 0.75rem; }
-.card { border: 1px solid var(--color-border); border-radius: 0.5rem; padding: 1rem; }
+.card {
+  border: 1px solid var(--color-border); border-radius: 0.5rem; padding: 1rem;
+  transition: border-color 0.5s ease, box-shadow 0.5s ease;
+}
+.card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 .card-top { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; }
 .type-badge {
   font-size: 0.65rem;
@@ -163,6 +218,32 @@ h1 { font-size: 1.5rem; margin-bottom: 1rem; color: var(--color-heading); }
 .chart-loading { text-align: center; color: var(--color-text); padding: 1rem; font-size: 0.85rem; }
 .back-link { margin-top: 1rem; display: inline-block; }
 .error { color: #c00; }
+
+.last-updated {
+  text-align: center; font-size: 0.75rem; color: var(--color-text);
+  opacity: 0.5; margin-top: 1rem;
+  animation: fadeIn 0.6s ease;
+}
+
+.loading-shimmer { display: flex; flex-direction: column; gap: 0.75rem; }
+.shimmer-card {
+  height: 4.5rem; border-radius: 0.5rem;
+  background: linear-gradient(90deg, var(--color-background-soft) 25%, var(--color-background-mute) 50%, var(--color-background-soft) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.card-list-enter-active { transition: all 0.4s ease-out; }
+.card-list-leave-active { transition: all 0.3s ease-in; }
+.card-list-enter-from { opacity: 0; transform: translateY(12px); }
+.card-list-leave-to { opacity: 0; transform: translateX(20px); }
+.card-list-move { transition: transform 0.4s ease; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 0.5; } }
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 
 @media (max-width: 600px) {
   .card-meta { flex-direction: column; gap: 0.25rem; }
