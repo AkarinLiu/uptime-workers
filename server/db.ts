@@ -18,6 +18,7 @@ export async function initDb(db: D1Database) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       slug TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'http',
       url TEXT NOT NULL,
       interval_seconds INTEGER NOT NULL DEFAULT 60,
       retention_days INTEGER NOT NULL DEFAULT 30,
@@ -49,4 +50,5 @@ export async function initDb(db: D1Database) {
   ]);
 
   try { await db.prepare("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'").run(); } catch {}
+  try { await db.prepare("ALTER TABLE monitors ADD COLUMN type TEXT NOT NULL DEFAULT 'http'").run(); } catch {}
 }

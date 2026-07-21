@@ -71,6 +71,10 @@ const messages: Record<string, Record<string, string>> = {
     untilRetention: '保留 {n} 天',
     oldest: '最早',
     optional: '可选',
+    type: '类型',
+    host: '主机',
+    http: 'HTTP',
+    tcp: 'TCP',
   },
   en: {
     status: 'Status',
@@ -142,6 +146,10 @@ const messages: Record<string, Record<string, string>> = {
     untilRetention: '{n}d retention',
     oldest: 'Oldest',
     optional: 'optional',
+    type: 'Type',
+    host: 'Host',
+    http: 'HTTP',
+    tcp: 'TCP',
   },
 }
 

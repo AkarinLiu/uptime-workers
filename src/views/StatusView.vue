@@ -20,6 +20,10 @@ function isUp(m: any) {
   return m.last_status_code != null && m.last_status_code >= 200 && m.last_status_code < 400 && !m.last_error
 }
 
+function isHttp(m: any): boolean {
+  return !m.type || m.type === 'http'
+}
+
 function timeAgo(ts: string) {
   if (!ts) return t('neverChecked')
   const diff = (Date.now() - new Date(ts + 'Z').getTime()) / 1000
@@ -89,9 +93,11 @@ watch(() => route.params.slug, (slug) => load(slug as string | undefined), { imm
           <div class="card-top">
             <StatusBadge :is-up="isUp(m)" />
             <strong>{{ m.name }}</strong>
+            <span class="type-badge">{{ t(m.type || 'http') }}</span>
           </div>
           <div class="card-meta">
-            <a :href="m.url" target="_blank">{{ m.url }}</a>
+            <a v-if="isHttp(m)" :href="m.url" target="_blank">{{ m.url }}</a>
+            <span v-else class="mono">tcp://{{ m.url }}</span>
             <span>{{ isUp(m) ? `${m.last_response_time_ms}ms` : (m.last_error || t('unknown')) }}</span>
             <span>{{ t('checked') }} {{ timeAgo(m.last_checked_at) }}</span>
           </div>
@@ -137,6 +143,18 @@ h1 { font-size: 1.5rem; margin-bottom: 1rem; color: var(--color-heading); }
 .grid { display: flex; flex-direction: column; gap: 0.75rem; }
 .card { border: 1px solid var(--color-border); border-radius: 0.5rem; padding: 1rem; }
 .card-top { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; }
+.type-badge {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  background: var(--color-background-soft);
+  color: var(--color-text);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.2rem;
+  opacity: 0.7;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.mono { font-family: monospace; }
 .card-meta { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; font-size: 0.85rem; color: var(--color-text); margin-bottom: 0.5rem; }
 .card-meta a { color: var(--color-text); word-break: break-all; }
 .detail-link { font-size: 0.85rem; }

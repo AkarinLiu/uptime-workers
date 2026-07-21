@@ -55,7 +55,9 @@ onMounted(load)
     <div v-else-if="monitor">
       <h1>{{ monitor.name }}</h1>
       <div class="info">
-        <a :href="monitor.url" target="_blank">{{ monitor.url }}</a>
+        <span class="type-badge">{{ t(monitor.type || 'http') }}</span>
+        <a v-if="!monitor.type || monitor.type === 'http'" :href="monitor.url" target="_blank">{{ monitor.url }}</a>
+        <span v-else class="mono">tcp://{{ monitor.url }}</span>
         <span>{{ t('interval') }}: {{ monitor.interval_seconds }}s</span>
         <span>{{ t('retention') }}: {{ monitor.retention_days }}d</span>
         <StatusBadge :is-up="monitor.last_status_code != null && monitor.last_status_code >= 200 && monitor.last_status_code < 400 && !monitor.last_error" :show-text="true" />
@@ -79,5 +81,17 @@ onMounted(load)
 }
 h1 { font-size: 1.5rem; margin-bottom: 0.5rem; color: var(--color-heading); }
 .info { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; font-size: 0.9rem; margin-bottom: 0.5rem; }
+.type-badge {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  background: var(--color-background-soft);
+  color: var(--color-text);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.2rem;
+  opacity: 0.7;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.mono { font-family: monospace; }
 .info a { color: var(--color-text); word-break: break-all; }
 </style>

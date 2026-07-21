@@ -4,6 +4,7 @@ interface Monitor {
   id: number;
   slug: string;
   name: string;
+  type: string;
   url: string;
   interval_seconds: number;
   retention_days: number;
@@ -88,18 +89,28 @@ export async function handleMonitors(
     const body = await request.json<{
       name: string;
       url: string;
+      type?: string;
       slug?: string;
       interval_seconds?: number;
       retention_days?: number;
     }>();
     if (!body.name || !body.url) return json({ error: "name and url are required" }, 400);
 
+    const type = body.type ?? "http";
+    if (!["http", "tcp"].includes(type)) return json({ error: "type must be http or tcp" }, 400);
+
+    if (type === "tcp") {
+      const i = body.url.lastIndexOf(":");
+      if (i === -1 || i === 0 || i === body.url.length - 1)
+        return json({ error: "url must be host:port for tcp monitors" }, 400);
+    }
+
     const slug = await resolveSlug(db, body.name, body.slug);
     if (!slug) return json({ error: "slug invalid or already taken" }, 400);
 
     const result = await db
-      .prepare("INSERT INTO monitors (slug, name, url, interval_seconds, retention_days) VALUES (?, ?, ?, ?, ?)")
-      .bind(slug, body.name, body.url, body.interval_seconds ?? 60, body.retention_days ?? 30)
+      .prepare("INSERT INTO monitors (slug, name, type, url, interval_seconds, retention_days) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(slug, body.name, type, body.url, body.interval_seconds ?? 60, body.retention_days ?? 30)
       .run();
     const monitor = await db
       .prepare("SELECT * FROM monitors WHERE id = ?")
@@ -113,12 +124,22 @@ export async function handleMonitors(
     if (!existing) return json({ error: "Not found" }, 404);
 
     const body = await request.json<{
-      name?: string; url?: string; slug?: string;
+      name?: string; url?: string; type?: string; slug?: string;
       interval_seconds?: number; retention_days?: number;
       enabled?: number;
     }>();
 
     const name = body.name ?? existing.name;
+    const type = body.type ?? existing.type;
+    const urlVal = body.url ?? existing.url;
+
+    if (type && !["http", "tcp"].includes(type)) return json({ error: "type must be http or tcp" }, 400);
+
+    if (type === "tcp") {
+      const i = urlVal.lastIndexOf(":");
+      if (i === -1 || i === 0 || i === urlVal.length - 1)
+        return json({ error: "url must be host:port for tcp monitors" }, 400);
+    }
     let slug = existing.slug;
     if (body.slug !== undefined || (body.name && body.name !== existing.name)) {
       const resolved = await resolveSlug(db, name, body.slug, id);
@@ -127,8 +148,8 @@ export async function handleMonitors(
     }
 
     await db
-      .prepare("UPDATE monitors SET slug=?, name=?, url=?, interval_seconds=?, retention_days=?, enabled=? WHERE id=?")
-      .bind(slug, name, body.url ?? existing.url, body.interval_seconds ?? existing.interval_seconds, body.retention_days ?? existing.retention_days, body.enabled ?? existing.enabled, id)
+      .prepare("UPDATE monitors SET slug=?, name=?, type=?, url=?, interval_seconds=?, retention_days=?, enabled=? WHERE id=?")
+      .bind(slug, name, type, urlVal, body.interval_seconds ?? existing.interval_seconds, body.retention_days ?? existing.retention_days, body.enabled ?? existing.enabled, id)
       .run();
 
     const monitor = await db

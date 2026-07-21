@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useAuth } from '../composables/auth'
 import { useI18n } from '../composables/i18n'
 
@@ -8,17 +8,33 @@ const { t } = useI18n()
 const props = defineProps<{ monitor: any | null }>()
 const emit = defineEmits(['saved', 'cancel'])
 
+const types = ['http', 'tcp'] as const
+
 const name = ref(props.monitor?.name ?? '')
 const slug = ref(props.monitor?.slug ?? '')
+const type = ref(props.monitor?.type ?? 'http')
 const url = ref(props.monitor?.url ?? '')
 const interval = ref(props.monitor?.interval_seconds ?? 60)
 const retention = ref(props.monitor?.retention_days ?? 30)
 const saving = ref(false)
 const error = ref('')
 
+const isTcp = computed(() => type.value === 'tcp')
+
+function validateHostPort(v: string): boolean {
+  const i = v.lastIndexOf(':')
+  if (i === -1 || i === 0 || i === v.length - 1) return false
+  const port = parseInt(v.substring(i + 1))
+  return !isNaN(port) && port >= 1 && port <= 65535
+}
+
 async function submit() {
   if (!name.value || !url.value) {
     error.value = t('pleaseFillAll')
+    return
+  }
+  if (isTcp.value && !validateHostPort(url.value)) {
+    error.value = isTcp.value ? 'url must be host:port (e.g. example.com:80)' : t('pleaseFillAll')
     return
   }
   saving.value = true
@@ -27,7 +43,7 @@ async function submit() {
     const isEdit = !!props.monitor
     const method = isEdit ? 'PUT' : 'POST'
     const path = isEdit ? `/api/monitors/${props.monitor.id}` : '/api/monitors'
-    const body: Record<string, unknown> = { name: name.value, url: url.value, interval_seconds: interval.value, retention_days: retention.value }
+    const body: Record<string, unknown> = { name: name.value, url: url.value, type: type.value, interval_seconds: interval.value, retention_days: retention.value }
     if (slug.value) body.slug = slug.value
     const res = await fetch(path, {
       method,
@@ -57,7 +73,12 @@ async function submit() {
     <div v-if="error" class="form-error">{{ error }}</div>
     <label>{{ t('name') }}<input v-model="name" type="text" required /></label>
     <label>Slug <span class="md-hint">({{ t('optional') }})</span><input v-model="slug" type="text" placeholder="auto" /></label>
-    <label>{{ t('url') }}<input v-model="url" type="url" placeholder="https://example.com" required /></label>
+    <label>{{ t('type') }}
+      <select v-model="type" class="type-select">
+        <option v-for="tp in types" :key="tp" :value="tp">{{ t(tp) }}</option>
+      </select>
+    </label>
+    <label>{{ isTcp ? t('host') : t('url') }}<input v-model="url" :type="isTcp ? 'text' : 'url'" :placeholder="isTcp ? 'example.com:80' : 'https://example.com'" required /></label>
     <label>{{ t('intervalSeconds') }}<input v-model.number="interval" type="number" min="10" /></label>
     <label>{{ t('retentionDays') }}<input v-model.number="retention" type="number" min="1" /></label>
     <div class="form-actions">
@@ -77,7 +98,8 @@ async function submit() {
 }
 h3 { margin-bottom: 0.75rem; color: var(--color-heading); font-size: 1rem; }
 label { display: block; margin-bottom: 0.5rem; font-size: 0.85rem; color: var(--color-heading); }
-input { display: block; width: 100%; margin-top: 0.2rem; padding: 0.4rem; border: 1px solid var(--color-border); border-radius: 0.25rem; background: var(--color-background-soft); color: var(--color-heading); font-size: 0.9rem; }
+input, select { display: block; width: 100%; margin-top: 0.2rem; padding: 0.4rem; border: 1px solid var(--color-border); border-radius: 0.25rem; background: var(--color-background-soft); color: var(--color-heading); font-size: 0.9rem; }
+.type-select { cursor: pointer; }
 .form-actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
 .form-actions button {
   padding: 0.4rem 0.8rem;

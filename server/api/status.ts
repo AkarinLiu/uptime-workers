@@ -28,7 +28,7 @@ export async function handleStatus(
   if (!slug) {
     const [monitors, announcements] = await Promise.all([
       env.DB.prepare(
-        "SELECT id, slug, name, url, last_status_code, last_response_time_ms, last_error, last_checked_at FROM monitors WHERE enabled = 1 ORDER BY name"
+        "SELECT id, slug, name, type, url, last_status_code, last_response_time_ms, last_error, last_checked_at FROM monitors WHERE enabled = 1 ORDER BY name"
       ).all(),
       env.DB.prepare("SELECT id, title, content, created_at FROM announcements WHERE active = 1 ORDER BY created_at DESC").all(),
     ]);
