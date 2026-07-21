@@ -4,6 +4,7 @@ import { handleStatus } from "./api/status";
 import { handleAuth } from "./api/auth";
 import { handleAnnouncements } from "./api/announcements";
 import { handleUsers } from "./api/users";
+import { handleSettings } from "./api/settings";
 import { runChecks } from "./cron";
 
 let dbInit: Promise<void> | null = null;
@@ -34,6 +35,10 @@ export default {
 
     if (url.pathname.startsWith("/api/users")) {
       return handleUsers(request, env);
+    }
+
+    if (url.pathname.startsWith("/api/settings")) {
+      return handleSettings(request, env);
     }
 
     if (url.pathname.startsWith("/api/monitors")) {

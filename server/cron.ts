@@ -1,3 +1,5 @@
+import { getSettings } from "./api/settings";
+
 async function checkUrl(
   url: string,
   timeoutMs: number
@@ -77,17 +79,21 @@ async function cleanupOldChecks(env: Env, monitorId: number, retentionDays: numb
 }
 
 export async function runChecks(env: Env): Promise<void> {
+  const settings = await getSettings(env.DB);
+  const intervalSec = settings.interval_seconds;
+  const retentionDays = settings.retention_days;
+  const webhookUrl = settings.webhook_url;
+
   const monitors = await env.DB.prepare(
     `SELECT * FROM monitors WHERE enabled = 1
      AND (last_checked_at IS NULL
-       OR (unixepoch('now') - unixepoch(last_checked_at)) >= interval_seconds)`
-  ).all();
+       OR (unixepoch('now') - unixepoch(last_checked_at)) >= ?)`
+  ).bind(intervalSec).all();
 
   for (const m of monitors.results as Array<Record<string, unknown>>) {
     const monitorId = m.id as number;
     const type = (m.type as string) ?? "http";
     const url = m.url as string;
-    const retentionDays = m.retention_days as number;
 
     let result: { status_code?: number; response_time_ms: number; error?: string };
 
@@ -118,6 +124,37 @@ export async function runChecks(env: Env): Promise<void> {
     )
       .bind(result.status_code ?? null, result.response_time_ms, result.error ?? null, monitorId)
       .run();
+
+    const notifyEnabled = (m.notify_enabled as number) ?? 0;
+    const notifyOn4xx = (m.notify_on_4xx as number) ?? 0;
+
+    if (webhookUrl && notifyEnabled) {
+      const shouldNotify = !!result.error
+        || (result.status_code != null && result.status_code >= 500)
+        || (notifyOn4xx === 1 && result.status_code != null && result.status_code >= 400);
+      if (shouldNotify) {
+        try {
+          const payload = JSON.stringify({
+            monitor_id: monitorId,
+            name: m.name,
+            slug: m.slug,
+            url: m.url,
+            type: type,
+            status_code: result.status_code ?? null,
+            response_time_ms: result.response_time_ms,
+            error: result.error ?? null,
+            checked_at: new Date().toISOString(),
+          });
+          // ponytail: fire-and-forget, best-effort delivery
+          const webhookPromise = fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "User-Agent": "Uptime-Workers/1.0" },
+            body: payload,
+          }).catch(() => {});
+          // don't await — don't block the check loop for webhook delivery
+        } catch { /* webhook delivery is best-effort */ }
+      }
+    }
 
     await cleanupOldChecks(env, monitorId, retentionDays);
   }

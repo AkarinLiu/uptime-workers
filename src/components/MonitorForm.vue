@@ -14,8 +14,8 @@ const name = ref(props.monitor?.name ?? '')
 const slug = ref(props.monitor?.slug ?? '')
 const type = ref(props.monitor?.type ?? 'http')
 const url = ref(props.monitor?.url ?? '')
-const interval = ref(props.monitor?.interval_seconds ?? 60)
-const retention = ref(props.monitor?.retention_days ?? 30)
+const notifyEnabled = ref(props.monitor?.notify_enabled ?? 0)
+const notifyOn4xx = ref(props.monitor?.notify_on_4xx ?? 0)
 const saving = ref(false)
 const error = ref('')
 
@@ -43,7 +43,7 @@ async function submit() {
     const isEdit = !!props.monitor
     const method = isEdit ? 'PUT' : 'POST'
     const path = isEdit ? `/api/monitors/${props.monitor.id}` : '/api/monitors'
-    const body: Record<string, unknown> = { name: name.value, url: url.value, type: type.value, interval_seconds: interval.value, retention_days: retention.value }
+    const body: Record<string, unknown> = { name: name.value, url: url.value, type: type.value, notify_enabled: notifyEnabled.value, notify_on_4xx: notifyOn4xx.value }
     if (slug.value) body.slug = slug.value
     const res = await fetch(path, {
       method,
@@ -79,8 +79,17 @@ async function submit() {
       </select>
     </label>
     <label>{{ isTcp ? t('host') : t('url') }}<input v-model="url" :type="isTcp ? 'text' : 'url'" :placeholder="isTcp ? 'example.com:80' : 'https://example.com'" required /></label>
-    <label>{{ t('intervalSeconds') }}<input v-model.number="interval" type="number" min="10" /></label>
-    <label>{{ t('retentionDays') }}<input v-model.number="retention" type="number" min="1" /></label>
+    <fieldset class="notify-section">
+      <legend>{{ t('notify') }}</legend>
+      <label class="checkbox-label">
+        <input v-model.number="notifyEnabled" type="checkbox" :true-value="1" :false-value="0" />
+        {{ t('notifyEnable') }}
+      </label>
+      <label v-if="notifyEnabled" class="checkbox-label indent">
+        <input v-model.number="notifyOn4xx" type="checkbox" :true-value="1" :false-value="0" />
+        {{ t('notifyOn4xx') }}
+      </label>
+    </fieldset>
     <div class="form-actions">
       <button type="submit" :disabled="saving">{{ saving ? t('saving') : t('save') }}</button>
       <button type="button" @click="emit('cancel')">{{ t('cancel') }}</button>
@@ -116,4 +125,15 @@ input, select { display: block; width: 100%; margin-top: 0.2rem; padding: 0.4rem
   border-color: transparent;
 }
 .form-error { color: #c00; font-size: 0.85rem; margin-bottom: 0.5rem; }
+.notify-section {
+  border: 1px solid var(--color-border); border-radius: 0.25rem;
+  padding: 0.5rem 0.75rem; margin-bottom: 0.75rem;
+}
+.notify-section legend { font-size: 0.8rem; color: var(--color-heading); padding: 0 0.25rem; }
+.checkbox-label {
+  display: flex !important; align-items: center; gap: 0.4rem;
+  margin-bottom: 0.3rem !important; cursor: pointer; font-size: 0.85rem;
+}
+.checkbox-label input[type="checkbox"] { width: auto; margin-top: 0; }
+.checkbox-label.indent { margin-left: 1.5rem; }
 </style>

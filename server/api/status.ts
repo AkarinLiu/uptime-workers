@@ -64,12 +64,14 @@ export async function handleStatus(
     .bind(...rangeBind)
     .first<{ total: number; up: number }>();
 
-  return json({
+  const result = {
     ...monitor,
     recent_checks: recentChecks.results,
     uptime_pct:
       uptime && uptime.total > 0
         ? Math.round((uptime.up / uptime.total) * 10000) / 100
         : null,
-  });
+  } as Record<string, unknown>;
+  delete result.webhook_url;
+  return json(result);
 }

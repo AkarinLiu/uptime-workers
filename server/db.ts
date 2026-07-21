@@ -27,6 +27,9 @@ export async function initDb(db: D1Database) {
       last_response_time_ms INTEGER,
       last_error TEXT,
       last_checked_at TEXT,
+      webhook_url TEXT,
+      notify_enabled INTEGER NOT NULL DEFAULT 0,
+      notify_on_4xx INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS checks (
@@ -47,8 +50,19 @@ export async function initDb(db: D1Database) {
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )`),
   ]);
+
+  await db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('interval_seconds', '60')").run();
+  await db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('retention_days', '30')").run();
+  await db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('webhook_url', '')").run();
 
   try { await db.prepare("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'").run(); } catch {}
   try { await db.prepare("ALTER TABLE monitors ADD COLUMN type TEXT NOT NULL DEFAULT 'http'").run(); } catch {}
+  try { await db.prepare("ALTER TABLE monitors ADD COLUMN webhook_url TEXT").run(); } catch {}
+  try { await db.prepare("ALTER TABLE monitors ADD COLUMN notify_enabled INTEGER NOT NULL DEFAULT 0").run(); } catch {}
+  try { await db.prepare("ALTER TABLE monitors ADD COLUMN notify_on_4xx INTEGER NOT NULL DEFAULT 0").run(); } catch {}
 }

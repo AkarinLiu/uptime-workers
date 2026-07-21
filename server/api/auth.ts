@@ -48,6 +48,25 @@ export async function handleAuth(request: Request, env: Env): Promise<Response> 
     return json({ ok: true });
   }
 
+  if (url.pathname === "/api/auth/password" && request.method === "PUT") {
+    const session = await verifySession(request, db);
+    if (!session) return json({ error: "Unauthorized" }, 401);
+
+    const body = await request.json<{ oldPassword: string; newPassword: string }>();
+    if (!body.oldPassword || !body.newPassword) return json({ error: "oldPassword and newPassword required" }, 400);
+    if (body.newPassword.length < 6) return json({ error: "new password must be at least 6 characters" }, 400);
+
+    const user = await db.prepare("SELECT password_hash FROM users WHERE id = ?").bind(session.userId).first<{ password_hash: string }>();
+    if (!user) return json({ error: "user not found" }, 404);
+
+    const valid = await verifyPassword(body.oldPassword, user.password_hash);
+    if (!valid) return json({ error: "incorrect current password" }, 401);
+
+    const hash = await hashPassword(body.newPassword);
+    await db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(hash, session.userId).run();
+    return json({ ok: true });
+  }
+
   if (url.pathname === "/api/auth/me" && request.method === "GET") {
     const session = await verifySession(request, db);
     if (!session) return json({ error: "Unauthorized" }, 401);

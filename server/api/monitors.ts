@@ -1,4 +1,5 @@
 import { verifySession } from "../auth";
+import { getSettings } from "./settings";
 
 interface Monitor {
   id: number;
@@ -6,13 +7,13 @@ interface Monitor {
   name: string;
   type: string;
   url: string;
-  interval_seconds: number;
-  retention_days: number;
   enabled: number;
   last_status_code: number | null;
   last_response_time_ms: number | null;
   last_error: string | null;
   last_checked_at: string | null;
+  notify_enabled: number;
+  notify_on_4xx: number;
   created_at: string;
 }
 
@@ -91,8 +92,8 @@ export async function handleMonitors(
       url: string;
       type?: string;
       slug?: string;
-      interval_seconds?: number;
-      retention_days?: number;
+      notify_enabled?: number;
+      notify_on_4xx?: number;
     }>();
     if (!body.name || !body.url) return json({ error: "name and url are required" }, 400);
 
@@ -109,8 +110,8 @@ export async function handleMonitors(
     if (!slug) return json({ error: "slug invalid or already taken" }, 400);
 
     const result = await db
-      .prepare("INSERT INTO monitors (slug, name, type, url, interval_seconds, retention_days) VALUES (?, ?, ?, ?, ?, ?)")
-      .bind(slug, body.name, type, body.url, body.interval_seconds ?? 60, body.retention_days ?? 30)
+      .prepare("INSERT INTO monitors (slug, name, type, url, notify_enabled, notify_on_4xx) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(slug, body.name, type, body.url, body.notify_enabled ?? 0, body.notify_on_4xx ?? 0)
       .run();
     const monitor = await db
       .prepare("SELECT * FROM monitors WHERE id = ?")
@@ -125,8 +126,7 @@ export async function handleMonitors(
 
     const body = await request.json<{
       name?: string; url?: string; type?: string; slug?: string;
-      interval_seconds?: number; retention_days?: number;
-      enabled?: number;
+      enabled?: number; notify_enabled?: number; notify_on_4xx?: number;
     }>();
 
     const name = body.name ?? existing.name;
@@ -148,8 +148,8 @@ export async function handleMonitors(
     }
 
     await db
-      .prepare("UPDATE monitors SET slug=?, name=?, type=?, url=?, interval_seconds=?, retention_days=?, enabled=? WHERE id=?")
-      .bind(slug, name, type, urlVal, body.interval_seconds ?? existing.interval_seconds, body.retention_days ?? existing.retention_days, body.enabled ?? existing.enabled, id)
+      .prepare("UPDATE monitors SET slug=?, name=?, type=?, url=?, enabled=?, notify_enabled=?, notify_on_4xx=? WHERE id=?")
+      .bind(slug, name, type, urlVal, body.enabled ?? existing.enabled, body.notify_enabled ?? existing.notify_enabled, body.notify_on_4xx ?? existing.notify_on_4xx, id)
       .run();
 
     const monitor = await db
@@ -238,7 +238,7 @@ export async function handleCheckStats(request: Request, env: Env): Promise<Resp
 
   if (url.pathname === "/api/checks/stats" && request.method === "GET") {
     const stats = await db.prepare(`
-      SELECT m.id, m.name, m.retention_days,
+      SELECT m.id, m.name,
         COUNT(c.id) as log_count,
         MIN(c.created_at) as oldest_log
       FROM monitors m
@@ -251,20 +251,19 @@ export async function handleCheckStats(request: Request, env: Env): Promise<Resp
 
   if (url.pathname === "/api/checks/purge" && request.method === "POST") {
     const body = await request.json<{ monitor_id?: number }>();
+    const settings = await getSettings(db);
     if (body.monitor_id) {
-      const monitor = await db.prepare("SELECT retention_days FROM monitors WHERE id = ?").bind(body.monitor_id).first<{ retention_days: number }>();
-      if (!monitor) return json({ error: "Not found" }, 404);
       const result = await db.prepare(
         "DELETE FROM checks WHERE monitor_id = ? AND created_at < datetime('now', ?)"
-      ).bind(body.monitor_id, `-${monitor.retention_days} days`).run();
+      ).bind(body.monitor_id, `-${settings.retention_days} days`).run();
       return json({ deleted: result.meta.changes });
     }
-    const monitors = await db.prepare("SELECT id, retention_days FROM monitors").all<{ id: number; retention_days: number }>();
+    const monitors = await db.prepare("SELECT id FROM monitors").all<{ id: number }>();
     let total = 0;
     for (const m of monitors.results) {
       const result = await db.prepare(
         "DELETE FROM checks WHERE monitor_id = ? AND created_at < datetime('now', ?)"
-      ).bind(m.id, `-${m.retention_days} days`).run();
+      ).bind(m.id, `-${settings.retention_days} days`).run();
       total += result.meta.changes;
     }
     return json({ deleted: total });

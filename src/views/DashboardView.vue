@@ -24,6 +24,12 @@ const annContent = ref('')
 const showUserForm = ref(false)
 const newUsername = ref('')
 const newPassword = ref('')
+const changingPwUserId = ref<number | null>(null)
+const changingPwValue = ref('')
+const settingsWebhookUrl = ref('')
+const settingsInterval = ref(60)
+const settingsRetention = ref(30)
+const settingsSaving = ref(false)
 
 function isUp(m: any) {
   return m.last_status_code != null && m.last_status_code >= 200 && m.last_status_code < 400 && !m.last_error
@@ -69,6 +75,31 @@ async function loadUsers() {
 async function loadLogStats() {
   const res = await fetch('/api/checks/stats', { headers: headers() })
   if (res.ok) logStats.value = await res.json()
+}
+
+async function loadSettings() {
+  const res = await fetch('/api/settings', { headers: headers() })
+  if (res.ok) {
+    const s = await res.json()
+    settingsWebhookUrl.value = s.webhook_url
+    settingsInterval.value = s.interval_seconds
+    settingsRetention.value = s.retention_days
+  }
+}
+
+async function saveSettings() {
+  settingsSaving.value = true
+  try {
+    await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...headers() },
+      body: JSON.stringify({
+        webhook_url: settingsWebhookUrl.value,
+        interval_seconds: settingsInterval.value,
+        retention_days: settingsRetention.value,
+      }),
+    })
+  } finally { settingsSaving.value = false }
 }
 
 async function toggle(monitor: any) {
@@ -154,6 +185,22 @@ async function removeUser(u: any) {
   }
 }
 
+async function changeUserPassword() {
+  if (!changingPwValue.value || changingPwUserId.value == null) return
+  const res = await fetch(`/api/users/${changingPwUserId.value}/password`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...headers() },
+    body: JSON.stringify({ password: changingPwValue.value }),
+  })
+  if (res.ok) {
+    changingPwUserId.value = null
+    changingPwValue.value = ''
+  } else {
+    const data = await res.json()
+    alert(data.error || t('error'))
+  }
+}
+
 function getLogCount(monitorId: number): number {
   return (logStats.value.find((s: any) => s.id === monitorId)?.log_count) ?? 0
 }
@@ -174,7 +221,7 @@ async function purgeLogs(monitorId?: number) {
   }
 }
 
-onMounted(async () => { await loadMonitors(); await loadAnnouncements(); await loadUsers(); await loadLogStats() })
+onMounted(async () => { await loadMonitors(); await loadAnnouncements(); await loadUsers(); await loadLogStats(); await loadSettings() })
 </script>
 
 <template>
@@ -230,8 +277,29 @@ onMounted(async () => { await loadMonitors(); await loadAnnouncements(); await l
           <span class="user-role">{{ u.role === 'admin' ? t('admin_') : t('user_') }}</span>
         </div>
         <div class="ann-actions">
+          <button @click="changingPwUserId = u.id; changingPwValue = ''">{{ t('changePassword') }}</button>
           <button class="danger" @click="removeUser(u)">{{ t('delete') }}</button>
         </div>
+      </div>
+      <div v-if="changingPwUserId != null" class="ann-form">
+        <h3>{{ t('changePasswordFor', { name: users.find(u => u.id === changingPwUserId)?.username || '' }) }}</h3>
+        <label>{{ t('newPassword') }}<input v-model="changingPwValue" type="password" /></label>
+        <div class="form-actions">
+          <button class="save-btn" @click="changeUserPassword">{{ t('save') }}</button>
+          <button @click="changingPwUserId = null; changingPwValue = ''">{{ t('cancel') }}</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>{{ t('settings') }}</h2>
+      <div class="settings-form">
+        <label>{{ t('webhookUrl') }}<input v-model="settingsWebhookUrl" type="url" placeholder="https://..." /></label>
+        <div class="settings-row">
+          <label>{{ t('intervalSeconds') }}<input v-model.number="settingsInterval" type="number" min="10" /></label>
+          <label>{{ t('retentionDays') }}<input v-model.number="settingsRetention" type="number" min="1" /></label>
+        </div>
+        <button class="save-btn" :disabled="settingsSaving" @click="saveSettings">{{ settingsSaving ? t('saving') : t('save') }}</button>
       </div>
     </section>
 
@@ -258,7 +326,7 @@ onMounted(async () => { await loadMonitors(); await loadAnnouncements(); await l
             <span v-else class="mono">{{ monitorUrl(m) }}</span>
             <span>{{ isUp(m) ? `${m.last_response_time_ms}ms` : (m.last_error || t('nA')) }}</span>
             <span>{{ t('checked') }} {{ timeAgo(m.last_checked_at) }}</span>
-            <span class="log-info">{{ getLogCount(m.id) }} {{ t('logs') }} &middot; {{ t('untilRetention', { n: m.retention_days }) }}</span>
+            <span class="log-info">{{ getLogCount(m.id) }} {{ t('logs') }} &middot; {{ t('untilRetention', { n: settingsRetention }) }}</span>
           </div>
           <div class="card-actions">
             <button @click="router.push(`/admin/monitors/${m.id}`)">{{ t('history') }}</button>
@@ -367,6 +435,20 @@ h2 { font-size: 1.1rem; margin-bottom: 0.75rem; color: var(--color-heading); }
   cursor: pointer; font-size: 0.85rem; background: var(--color-background); color: var(--color-text);
 }
 .form-actions .save-btn { background: hsla(160, 100%, 37%, 1); color: #fff; border-color: transparent; }
+.settings-form { max-width: 480px; }
+.settings-form label { display: block; margin-bottom: 0.75rem; font-size: 0.85rem; color: var(--color-heading); }
+.settings-form input {
+  display: block; width: 100%; margin-top: 0.2rem; padding: 0.4rem;
+  border: 1px solid var(--color-border); border-radius: 0.25rem;
+  background: var(--color-background-soft); color: var(--color-heading); font-size: 0.9rem;
+}
+.settings-row { display: flex; gap: 1rem; }
+.settings-row label { flex: 1; }
+.save-btn {
+  background: hsla(160, 100%, 37%, 1); color: #fff;
+  border: 0; padding: 0.5rem 1rem; border-radius: 0.25rem; cursor: pointer;
+}
+.save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 </style>
 
 <style>

@@ -58,5 +58,18 @@ export function useAuth() {
     } catch { return false }
   }
 
-  return { token, username, role, login, register, logout, checkAuth }
+  async function changeOwnPassword(oldPassword: string, newPassword: string): Promise<string | null> {
+    const res = await fetch('/api/auth/password', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token.value}` },
+      body: JSON.stringify({ oldPassword, newPassword }),
+    })
+    if (!res.ok) {
+      const data = await res.json()
+      return data.error || 'Failed'
+    }
+    return null
+  }
+
+  return { token, username, role, login, register, logout, checkAuth, changeOwnPassword }
 }

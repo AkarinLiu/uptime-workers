@@ -42,18 +42,23 @@ function formatTime(ts: string, range: string): string {
   )
 }
 
-function isUp(c: typeof props.checks[number]) {
-  return !c.error && c.status_code != null && c.status_code >= 200 && c.status_code < 400
+function pointColor(c: typeof props.checks[number]): string {
+  if (c.error) return '#ef4444'
+  if (c.status_code == null) return '#9ca3af'
+  if (c.status_code >= 500) return '#ef4444'
+  if (c.status_code >= 400) return '#f59e0b'
+  if (c.status_code >= 300) return '#6b7280'
+  return '#22c55e'
 }
 
 const chartData = computed(() => ({
   labels: props.checks.map((c) => formatTime(c.created_at, selectedRange.value)),
   datasets: [
     {
-      data: props.checks.map((c) => (c.error ? null : c.response_time_ms)),
+      data: props.checks.map((c) => c.response_time_ms ?? null),
       borderColor: '#3b82f6',
       backgroundColor: 'rgba(59,130,246,0.08)',
-      pointBackgroundColor: props.checks.map((c) => (isUp(c) ? '#22c55e' : '#ef4444')),
+      pointBackgroundColor: props.checks.map((c) => pointColor(c)),
       pointRadius: 2,
       pointHoverRadius: 5,
       spanGaps: true,
@@ -76,8 +81,8 @@ const chartOptions = computed(() => ({
         label: (ctx: any) => {
           const c = props.checks[ctx.dataIndex]
           if (!c) return ''
-          if (c.error) return `Down: ${c.error}`
-          return `Up: ${c.status_code} / ${c.response_time_ms}ms`
+          if (c.error) return `Error: ${c.error}`
+          return `${c.status_code} / ${c.response_time_ms}ms`
         },
       },
     },
