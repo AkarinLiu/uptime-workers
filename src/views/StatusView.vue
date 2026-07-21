@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { useI18n } from '../composables/i18n'
 import { renderMarkdown } from '../composables/markdown'
 import StatusBadge from '../components/StatusBadge.vue'
+import UptimeChart from '../components/UptimeChart.vue'
 
 const route = useRoute()
 const { t } = useI18n()
@@ -12,6 +13,8 @@ const announcements = ref<any[]>([])
 const detail = ref<any>(null)
 const loading = ref(false)
 const error = ref('')
+const chartRange = ref('24h')
+const chartLoading = ref(false)
 
 function isUp(m: any) {
   return m.last_status_code != null && m.last_status_code >= 200 && m.last_status_code < 400 && !m.last_error
@@ -31,10 +34,7 @@ async function load(slug: string | undefined) {
   error.value = ''
   try {
     if (slug) {
-      const res = await fetch(`/api/status/${slug}`)
-      const data = await res.json()
-      if (res.ok) detail.value = data
-      else error.value = data.error || t('error')
+      await loadDetail(slug)
     } else {
       const res = await fetch('/api/status/')
       const data = await res.json()
@@ -46,6 +46,25 @@ async function load(slug: string | undefined) {
   } finally {
     loading.value = false
   }
+}
+
+async function loadDetail(slug: string) {
+  chartLoading.value = true
+  try {
+    const res = await fetch(`/api/status/${slug}?range=${chartRange.value}`)
+    const data = await res.json()
+    if (res.ok) detail.value = data
+    else error.value = data.error || t('error')
+  } catch (e: any) {
+    error.value = e.message
+  } finally {
+    chartLoading.value = false
+  }
+}
+
+function onRangeChange(range: string) {
+  chartRange.value = range
+  if (route.params.slug) loadDetail(route.params.slug as string)
 }
 
 watch(() => route.params.slug, (slug) => load(slug as string | undefined), { immediate: true })
@@ -89,20 +108,13 @@ watch(() => route.params.slug, (slug) => load(slug as string | undefined), { imm
           <StatusBadge :is-up="isUp(detail)" />
           <span class="status-code">{{ isUp(detail) ? `${detail.last_status_code} - ${detail.last_response_time_ms}ms` : (detail.last_error || t('unknown')) }}</span>
         </div>
-        <p class="uptime-7d">{{ t('uptime7d') }}: <strong>{{ detail.uptime_7d_pct != null ? detail.uptime_7d_pct + '%' : t('nA') }}</strong></p>
-        <table v-if="detail.recent_checks?.length">
-          <thead>
-            <tr><th>{{ t('time') }}</th><th>{{ t('status') }}</th><th>{{ t('response') }}</th><th>{{ t('error') }}</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="c in detail.recent_checks" :key="c.id" :class="{ down: c.error || c.status_code >= 400 }">
-              <td>{{ new Date(c.created_at + 'Z').toLocaleString() }}</td>
-              <td><StatusBadge :is-up="!c.error && c.status_code >= 200 && c.status_code < 400" :show-text="true" /></td>
-              <td>{{ c.status_code }} / {{ c.response_time_ms }}ms</td>
-              <td>{{ c.error || '-' }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <UptimeChart
+          v-model="chartRange"
+          :checks="detail.recent_checks ?? []"
+          :uptime-pct="detail.uptime_pct"
+          @range-change="onRangeChange"
+        />
+        <div v-if="chartLoading" class="chart-loading">{{ t('loading') }}</div>
         <router-link to="/status" class="back-link">{{ t('allStatus') }}</router-link>
       </div>
     </template>
@@ -130,17 +142,12 @@ h1 { font-size: 1.5rem; margin-bottom: 1rem; color: var(--color-heading); }
 .detail-link { font-size: 0.85rem; }
 .detail-status { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
 .status-code { font-size: 1.2rem; font-weight: bold; color: var(--color-heading); }
-.uptime-7d { margin-bottom: 1rem; }
-table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--color-border); font-size: 0.85rem; }
-th { white-space: nowrap; }
-tr.down { background: rgba(255,0,0,0.05); }
+.chart-loading { text-align: center; color: var(--color-text); padding: 1rem; font-size: 0.85rem; }
 .back-link { margin-top: 1rem; display: inline-block; }
 .error { color: #c00; }
 
 @media (max-width: 600px) {
   .card-meta { flex-direction: column; gap: 0.25rem; }
-  th, td { padding: 0.4rem 0.3rem; font-size: 0.75rem; }
 }
 </style>
 

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../composables/auth'
 import { useI18n } from '../composables/i18n'
 import StatusBadge from '../components/StatusBadge.vue'
+import UptimeChart from '../components/UptimeChart.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -13,7 +14,7 @@ const monitor = ref<any>(null)
 const checks = ref<any[]>([])
 const uptime = ref<number | null>(null)
 const loading = ref(true)
-const limit = ref(100)
+const chartRange = ref('24h')
 
 const headers = () => ({ Authorization: `Bearer ${token.value}` })
 
@@ -22,7 +23,7 @@ async function load() {
   try {
     const [mRes, cRes] = await Promise.all([
       fetch(`/api/monitors/${id}`, { headers: headers() }),
-      fetch(`/api/checks?monitor_id=${id}&limit=${limit.value}`, { headers: headers() }),
+      fetch(`/api/checks?monitor_id=${id}&range=${chartRange.value}`, { headers: headers() }),
     ])
     monitor.value = await mRes.json()
     const cData = await cRes.json()
@@ -31,8 +32,16 @@ async function load() {
   } finally { loading.value = false }
 }
 
-function isUp(c: any) {
-  return !c.error && c.status_code >= 200 && c.status_code < 400
+async function onRangeChange(range: string) {
+  chartRange.value = range
+  const id = route.params.id
+  loading.value = true
+  try {
+    const cRes = await fetch(`/api/checks?monitor_id=${id}&range=${range}`, { headers: headers() })
+    const cData = await cRes.json()
+    checks.value = cData.checks
+    uptime.value = cData.uptime_pct
+  } finally { loading.value = false }
 }
 
 onMounted(load)
@@ -51,21 +60,12 @@ onMounted(load)
         <span>{{ t('retention') }}: {{ monitor.retention_days }}d</span>
         <StatusBadge :is-up="monitor.last_status_code != null && monitor.last_status_code >= 200 && monitor.last_status_code < 400 && !monitor.last_error" :show-text="true" />
       </div>
-      <p v-if="uptime != null" class="uptime">{{ t('uptimeOverall') }}: <strong>{{ uptime }}%</strong></p>
-
-      <table v-if="checks.length">
-        <thead>
-          <tr><th>{{ t('time') }}</th><th>{{ t('status') }}</th><th>{{ t('response') }}</th><th>{{ t('error') }}</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="c in checks" :key="c.id" :class="{ down: !isUp(c) }">
-            <td>{{ new Date(c.created_at + 'Z').toLocaleString() }}</td>
-            <td><StatusBadge :is-up="isUp(c)" :show-text="true" /></td>
-            <td>{{ c.status_code }} / {{ c.response_time_ms }}ms</td>
-            <td>{{ c.error || '-' }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <UptimeChart
+        v-model="chartRange"
+        :checks="checks"
+        :uptime-pct="uptime"
+        @range-change="onRangeChange"
+      />
     </div>
   </div>
 </template>
@@ -80,8 +80,4 @@ onMounted(load)
 h1 { font-size: 1.5rem; margin-bottom: 0.5rem; color: var(--color-heading); }
 .info { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; font-size: 0.9rem; margin-bottom: 0.5rem; }
 .info a { color: var(--color-text); word-break: break-all; }
-.uptime { margin-bottom: 1rem; }
-table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--color-border); font-size: 0.85rem; }
-tr.down { background: rgba(255,0,0,0.05); }
 </style>

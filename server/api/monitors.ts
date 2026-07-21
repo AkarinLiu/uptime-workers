@@ -147,6 +147,19 @@ export async function handleMonitors(
   return json({ error: "Method not allowed" }, 405);
 }
 
+const RANGE_MAP: Record<string, string> = {
+  "1h": "-1 hours",
+  "6h": "-6 hours",
+  "24h": "-24 hours",
+  "7d": "-7 days",
+  "30d": "-30 days",
+};
+
+function parseRange(range: string | null): string | null {
+  if (!range) return null;
+  return RANGE_MAP[range] ?? null;
+}
+
 export async function handleChecks(
   request: Request,
   env: Env
@@ -160,21 +173,33 @@ export async function handleChecks(
   const monitorId = url.searchParams.get("monitor_id");
   if (!monitorId) return json({ error: "monitor_id required" }, 400);
 
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 500);
+  const range = parseRange(url.searchParams.get("range"));
+  const timeFilter = range ? " AND created_at >= datetime('now', ?)" : "";
+  const order = range ? "ASC" : "DESC";
+  const limit = range ? 2000 : Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 500);
+  const bindVals: unknown[] = [parseInt(monitorId)];
+  if (range) bindVals.push(range);
+  if (!range) bindVals.push(limit);
 
-  const checks = await db.prepare(
-    "SELECT * FROM checks WHERE monitor_id = ? ORDER BY created_at DESC LIMIT ?"
-  )
-    .bind(parseInt(monitorId), limit)
+  const query = range
+    ? `SELECT * FROM checks WHERE monitor_id = ?${timeFilter} ORDER BY created_at ${order} LIMIT ${limit}`
+    : `SELECT * FROM checks WHERE monitor_id = ? ORDER BY created_at ${order} LIMIT ?`;
+
+  const checks = await db.prepare(query)
+    .bind(...bindVals)
     .all();
+
+  const uptimeTimeFilter = range ? " AND created_at >= datetime('now', ?)" : "";
+  const uptimeBindVals: unknown[] = [parseInt(monitorId)];
+  if (range) uptimeBindVals.push(range);
 
   const uptime = await db.prepare(
     `SELECT
       COUNT(*) as total,
       SUM(CASE WHEN error IS NULL AND status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END) as up
-    FROM checks WHERE monitor_id = ?`
+    FROM checks WHERE monitor_id = ?${uptimeTimeFilter}`
   )
-    .bind(parseInt(monitorId))
+    .bind(...uptimeBindVals)
     .first<{ total: number; up: number }>();
 
   return json({
