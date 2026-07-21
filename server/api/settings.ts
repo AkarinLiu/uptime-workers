@@ -56,7 +56,12 @@ export async function handleSettings(request: Request, env: Env): Promise<Respon
       const res = await fetch(body.webhook_url, {
         method: "POST",
         headers: { "Content-Type": "application/json", "User-Agent": "Uptime-Workers/1.0" },
-        body: JSON.stringify({ test: true, message: "This is a test message from Uptime Workers", timestamp: new Date().toISOString() }),
+        body: JSON.stringify({
+          msgtype: "markdown",
+          markdown: {
+            content: `**Uptime Workers 测试消息**\n> 这是一条来自 Uptime Workers 的测试消息\n> 时间: ${new Date().toISOString()}\n> 如果你收到此消息，说明 Webhook 配置正确`,
+          },
+        }),
       });
       return json({ success: true, status: res.status });
     } catch (e: unknown) {

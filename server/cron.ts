@@ -134,16 +134,14 @@ export async function runChecks(env: Env): Promise<void> {
         || (notifyOn4xx === 1 && result.status_code != null && result.status_code >= 400);
       if (shouldNotify) {
         try {
+          const statusText = result.error
+            ? `错误: ${result.error}`
+            : `状态码: ${result.status_code ?? 'N/A'}`;
           const payload = JSON.stringify({
-            monitor_id: monitorId,
-            name: m.name,
-            slug: m.slug,
-            url: m.url,
-            type: type,
-            status_code: result.status_code ?? null,
-            response_time_ms: result.response_time_ms,
-            error: result.error ?? null,
-            checked_at: new Date().toISOString(),
+            msgtype: "markdown",
+            markdown: {
+              content: `**${m.name}** 监测异常\n> 地址: <font color="comment">${m.url}</font>\n> ${statusText}\n> 响应时间: ${result.response_time_ms}ms\n> 检测时间: ${new Date().toISOString()}`,
+            },
           });
           // ponytail: fire-and-forget, best-effort delivery
           const webhookPromise = fetch(webhookUrl, {
