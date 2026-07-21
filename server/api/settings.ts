@@ -49,5 +49,20 @@ export async function handleSettings(request: Request, env: Env): Promise<Respon
     return json(settings);
   }
 
+  if (request.method === "POST" && new URL(request.url).pathname === "/api/settings/test-webhook") {
+    const body = await request.json<{ webhook_url: string }>();
+    if (!body.webhook_url) return json({ error: "webhook_url is required" }, 400);
+    try {
+      const res = await fetch(body.webhook_url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "User-Agent": "Uptime-Workers/1.0" },
+        body: JSON.stringify({ test: true, message: "This is a test message from Uptime Workers", timestamp: new Date().toISOString() }),
+      });
+      return json({ success: true, status: res.status });
+    } catch (e: unknown) {
+      return json({ success: false, error: e instanceof Error ? e.message : "Unknown error" });
+    }
+  }
+
   return json({ error: "Method not allowed" }, 405);
 }

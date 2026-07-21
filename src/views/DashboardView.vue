@@ -30,6 +30,8 @@ const settingsWebhookUrl = ref('')
 const settingsInterval = ref(60)
 const settingsRetention = ref(30)
 const settingsSaving = ref(false)
+const testWebhookSending = ref(false)
+const testWebhookMsg = ref('')
 
 function isUp(m: any) {
   return m.last_status_code != null && m.last_status_code >= 200 && m.last_status_code < 400 && !m.last_error
@@ -100,6 +102,22 @@ async function saveSettings() {
       }),
     })
   } finally { settingsSaving.value = false }
+}
+
+async function testWebhook() {
+  testWebhookSending.value = true
+  testWebhookMsg.value = ''
+  try {
+    const res = await fetch('/api/settings/test-webhook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers() },
+      body: JSON.stringify({ webhook_url: settingsWebhookUrl.value }),
+    })
+    const data = await res.json()
+    testWebhookMsg.value = data.success ? t('testWebhookSuccess') : (data.error || t('testWebhookFailed'))
+  } catch {
+    testWebhookMsg.value = t('testWebhookFailed')
+  } finally { testWebhookSending.value = false }
 }
 
 async function toggle(monitor: any) {
@@ -294,7 +312,12 @@ onMounted(async () => { await loadMonitors(); await loadAnnouncements(); await l
     <section class="section">
       <h2>{{ t('settings') }}</h2>
       <div class="settings-form">
-        <label>{{ t('webhookUrl') }}<input v-model="settingsWebhookUrl" type="url" placeholder="https://..." /></label>
+        <label>{{ t('webhookUrl') }}</label>
+        <div class="webhook-row">
+          <input v-model="settingsWebhookUrl" type="url" placeholder="https://..." />
+          <button class="test-webhook-btn" :disabled="testWebhookSending || !settingsWebhookUrl" @click="testWebhook">{{ testWebhookSending ? t('testWebhookSending') : t('testWebhook') }}</button>
+        </div>
+        <p v-if="testWebhookMsg" class="test-webhook-msg">{{ testWebhookMsg }}</p>
         <div class="settings-row">
           <label>{{ t('intervalSeconds') }}<input v-model.number="settingsInterval" type="number" min="10" /></label>
           <label>{{ t('retentionDays') }}<input v-model.number="settingsRetention" type="number" min="1" /></label>
@@ -449,6 +472,24 @@ h2 { font-size: 1.1rem; margin-bottom: 0.75rem; color: var(--color-heading); }
   border: 0; padding: 0.5rem 1rem; border-radius: 0.25rem; cursor: pointer;
 }
 .save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.webhook-row { display: flex; gap: 0.5rem; }
+.webhook-row input { flex: 1; }
+.test-webhook-btn {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  background: var(--color-background);
+  color: var(--color-text);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.test-webhook-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.test-webhook-msg {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: hsla(160, 100%, 37%, 1);
+}
 </style>
 
 <style>
