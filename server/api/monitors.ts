@@ -1,5 +1,6 @@
 import { verifySession } from "../auth";
 import { getSettings } from "./settings";
+import { parseRange } from "../range";
 
 interface Monitor {
   id: number;
@@ -168,19 +169,6 @@ export async function handleMonitors(
   return json({ error: "Method not allowed" }, 405);
 }
 
-const RANGE_MAP: Record<string, string> = {
-  "1h": "-1 hours",
-  "6h": "-6 hours",
-  "24h": "-24 hours",
-  "7d": "-7 days",
-  "30d": "-30 days",
-};
-
-function parseRange(range: string | null): string | null {
-  if (!range) return null;
-  return RANGE_MAP[range] ?? null;
-}
-
 export async function handleChecks(
   request: Request,
   env: Env
@@ -194,25 +182,42 @@ export async function handleChecks(
   const monitorId = url.searchParams.get("monitor_id");
   if (!monitorId) return json({ error: "monitor_id required" }, 400);
 
-  const range = parseRange(url.searchParams.get("range"));
-  const timeFilter = range ? " AND created_at >= datetime('now', ?)" : "";
-  const order = range ? "ASC" : "DESC";
-  const limit = range ? 2000 : Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 500);
-  const bindVals: unknown[] = [parseInt(monitorId)];
-  if (range) bindVals.push(range);
-  if (!range) bindVals.push(limit);
+  const conf = parseRange(url.searchParams.get("range"));
 
-  const query = range
-    ? `SELECT * FROM checks WHERE monitor_id = ?${timeFilter} ORDER BY created_at ${order} LIMIT ${limit}`
-    : `SELECT * FROM checks WHERE monitor_id = ? ORDER BY created_at ${order} LIMIT ?`;
+  let checks;
+  if (conf && conf.bucket != null) {
+    const b = conf.bucket;
+    checks = await db.prepare(
+      `SELECT
+        datetime((strftime('%s', created_at) / ?) * ?, 'unixepoch') AS created_at,
+        ROUND(AVG(response_time_ms)) AS response_time_ms,
+        ROUND(AVG(status_code)) AS status_code,
+        CASE WHEN COUNT(status_code) = 0 AND COUNT(error) > 0 THEN 'down' ELSE NULL END AS error
+      FROM checks
+      WHERE monitor_id = ? AND created_at >= datetime('now', ?)
+      GROUP BY (strftime('%s', created_at) / ?)
+      ORDER BY (strftime('%s', created_at) / ?)`
+    )
+      .bind(b, b, parseInt(monitorId), conf.modifier, b, b)
+      .all();
+  } else if (conf) {
+    checks = await db.prepare(
+      `SELECT * FROM checks WHERE monitor_id = ? AND created_at >= datetime('now', ?) ORDER BY created_at ASC LIMIT 2000`
+    )
+      .bind(parseInt(monitorId), conf.modifier)
+      .all();
+  } else {
+    const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 500);
+    checks = await db.prepare(
+      `SELECT * FROM checks WHERE monitor_id = ? ORDER BY created_at DESC LIMIT ?`
+    )
+      .bind(parseInt(monitorId), limit)
+      .all();
+  }
 
-  const checks = await db.prepare(query)
-    .bind(...bindVals)
-    .all();
-
-  const uptimeTimeFilter = range ? " AND created_at >= datetime('now', ?)" : "";
+  const uptimeTimeFilter = conf ? " AND created_at >= datetime('now', ?)" : "";
   const uptimeBindVals: unknown[] = [parseInt(monitorId)];
-  if (range) uptimeBindVals.push(range);
+  if (conf) uptimeBindVals.push(conf.modifier);
 
   const uptime = await db.prepare(
     `SELECT
