@@ -9,7 +9,7 @@ export const RANGE_CONF: Record<string, RangeConf> = {
   "6h": { modifier: "-6 hours", bucket: null },
   "24h": { modifier: "-24 hours", bucket: null },
   "7d": { modifier: "-7 days", bucket: 3600 },
-  "30d": { modifier: "-30 days", bucket: 21600 },
+  "30d": { modifier: "-30 days", bucket: 86400 },
 };
 
 export function parseRange(range: string | null): RangeConf | null {

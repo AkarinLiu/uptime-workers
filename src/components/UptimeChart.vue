@@ -30,10 +30,15 @@ const emit = defineEmits<{
 const selectedRange = defineModel<string>({ default: '24h' })
 const { t } = useI18n()
 
+const isLongRange = computed(() => selectedRange.value === '7d' || selectedRange.value === '30d')
+
 function formatTime(ts: string, range: string): string {
   const d = new Date(ts + 'Z')
   if (range === '1h' || range === '6h') {
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
+  if (range === '30d') {
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
   }
   return (
     d.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
@@ -59,11 +64,12 @@ const chartData = computed(() => ({
       borderColor: '#3b82f6',
       backgroundColor: 'rgba(59,130,246,0.08)',
       pointBackgroundColor: props.checks.map((c) => pointColor(c)),
-      pointRadius: 2,
-      pointHoverRadius: 5,
+      pointRadius: isLongRange.value ? 0 : 2,
+      pointHoverRadius: isLongRange.value ? 6 : 5,
       spanGaps: true,
       fill: true,
-      tension: 0.15,
+      tension: isLongRange.value ? 0 : 0.15,
+      normalized: true,
     },
   ],
 }))
