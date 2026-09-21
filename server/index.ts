@@ -7,6 +7,8 @@ import { handleUsers } from "./api/users";
 import { handleSettings } from "./api/settings";
 import { runChecks } from "./cron";
 
+export { RegionProbe } from "./probe";
+
 let dbInit: Promise<void> | null = null;
 
 function ensureDb(env: Env): Promise<void> {

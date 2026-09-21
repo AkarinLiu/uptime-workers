@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../composables/auth'
 import { useI18n } from '../composables/i18n'
+import { regionKey } from '../composables/regions'
 import StatusBadge from '../components/StatusBadge.vue'
 import UptimeChart from '../components/UptimeChart.vue'
 
@@ -56,6 +57,7 @@ onMounted(load)
       <h1>{{ monitor.name }}</h1>
       <div class="info">
         <span class="type-badge">{{ t(monitor.type || 'http') }}</span>
+        <span v-if="monitor.region" class="type-badge">{{ t(regionKey(monitor.region)) }}</span>
         <a v-if="!monitor.type || monitor.type === 'http'" :href="monitor.url" target="_blank">{{ monitor.url }}</a>
         <span v-else class="mono">tcp://{{ monitor.url }}</span>
         <span>{{ t('interval') }}: {{ monitor.interval_seconds }}s</span>

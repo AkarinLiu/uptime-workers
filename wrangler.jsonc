@@ -27,6 +27,22 @@
 			"database_id": "f785fd17-b7f9-47b6-83b9-fdb837a8e5f6"
 		}
 	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "REGION_PROBE",
+				"class_name": "RegionProbe"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": [
+				"RegionProbe"
+			]
+		}
+	],
 	"triggers": {
 		"crons": [
 			"* * * * *"

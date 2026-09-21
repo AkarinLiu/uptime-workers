@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/auth'
 import { useI18n } from '../composables/i18n'
+import { regionKey } from '../composables/regions'
 import { renderMarkdown } from '../composables/markdown'
 import StatusBadge from '../components/StatusBadge.vue'
 import MonitorForm from '../components/MonitorForm.vue'
@@ -342,6 +343,7 @@ onMounted(async () => { await loadMonitors(); await loadAnnouncements(); await l
             <StatusBadge :is-up="isUp(m)" />
             <strong>{{ m.name }}</strong>
             <span class="type-badge">{{ t(m.type || 'http') }}</span>
+            <span v-if="m.region" class="type-badge">{{ t(regionKey(m.region)) }}</span>
             <span class="slug">/status/{{ m.slug }}</span>
           </div>
           <div class="card-meta">

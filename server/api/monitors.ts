@@ -1,6 +1,7 @@
 import { verifySession } from "../auth";
 import { getSettings } from "./settings";
 import { parseRange } from "../range";
+import { isRegionId } from "../regions";
 
 interface Monitor {
   id: number;
@@ -15,6 +16,7 @@ interface Monitor {
   last_checked_at: string | null;
   notify_enabled: number;
   notify_on_4xx: number;
+  region: string | null;
   created_at: string;
 }
 
@@ -95,11 +97,15 @@ export async function handleMonitors(
       slug?: string;
       notify_enabled?: number;
       notify_on_4xx?: number;
+      region?: string | null;
     }>();
     if (!body.name || !body.url) return json({ error: "name and url are required" }, 400);
 
     const type = body.type ?? "http";
     if (!["http", "tcp"].includes(type)) return json({ error: "type must be http or tcp" }, 400);
+
+    const region = body.region || null;
+    if (region && !isRegionId(region)) return json({ error: "invalid region" }, 400);
 
     if (type === "tcp") {
       const i = body.url.lastIndexOf(":");
@@ -111,8 +117,8 @@ export async function handleMonitors(
     if (!slug) return json({ error: "slug invalid or already taken" }, 400);
 
     const result = await db
-      .prepare("INSERT INTO monitors (slug, name, type, url, notify_enabled, notify_on_4xx) VALUES (?, ?, ?, ?, ?, ?)")
-      .bind(slug, body.name, type, body.url, body.notify_enabled ?? 0, body.notify_on_4xx ?? 0)
+      .prepare("INSERT INTO monitors (slug, name, type, url, notify_enabled, notify_on_4xx, region) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .bind(slug, body.name, type, body.url, body.notify_enabled ?? 0, body.notify_on_4xx ?? 0, region)
       .run();
     const monitor = await db
       .prepare("SELECT * FROM monitors WHERE id = ?")
@@ -128,13 +134,16 @@ export async function handleMonitors(
     const body = await request.json<{
       name?: string; url?: string; type?: string; slug?: string;
       enabled?: number; notify_enabled?: number; notify_on_4xx?: number;
+      region?: string | null;
     }>();
 
     const name = body.name ?? existing.name;
     const type = body.type ?? existing.type;
     const urlVal = body.url ?? existing.url;
+    const region = body.region === undefined ? existing.region : (body.region || null);
 
     if (type && !["http", "tcp"].includes(type)) return json({ error: "type must be http or tcp" }, 400);
+    if (region && !isRegionId(region)) return json({ error: "invalid region" }, 400);
 
     if (type === "tcp") {
       const i = urlVal.lastIndexOf(":");
@@ -149,8 +158,8 @@ export async function handleMonitors(
     }
 
     await db
-      .prepare("UPDATE monitors SET slug=?, name=?, type=?, url=?, enabled=?, notify_enabled=?, notify_on_4xx=? WHERE id=?")
-      .bind(slug, name, type, urlVal, body.enabled ?? existing.enabled, body.notify_enabled ?? existing.notify_enabled, body.notify_on_4xx ?? existing.notify_on_4xx, id)
+      .prepare("UPDATE monitors SET slug=?, name=?, type=?, url=?, enabled=?, notify_enabled=?, notify_on_4xx=?, region=? WHERE id=?")
+      .bind(slug, name, type, urlVal, body.enabled ?? existing.enabled, body.notify_enabled ?? existing.notify_enabled, body.notify_on_4xx ?? existing.notify_on_4xx, region, id)
       .run();
 
     const monitor = await db

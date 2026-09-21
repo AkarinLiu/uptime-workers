@@ -30,6 +30,7 @@ export async function initDb(db: D1Database) {
       webhook_url TEXT,
       notify_enabled INTEGER NOT NULL DEFAULT 0,
       notify_on_4xx INTEGER NOT NULL DEFAULT 0,
+      region TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS checks (
@@ -65,4 +66,5 @@ export async function initDb(db: D1Database) {
   try { await db.prepare("ALTER TABLE monitors ADD COLUMN webhook_url TEXT").run(); } catch {}
   try { await db.prepare("ALTER TABLE monitors ADD COLUMN notify_enabled INTEGER NOT NULL DEFAULT 0").run(); } catch {}
   try { await db.prepare("ALTER TABLE monitors ADD COLUMN notify_on_4xx INTEGER NOT NULL DEFAULT 0").run(); } catch {}
+  try { await db.prepare("ALTER TABLE monitors ADD COLUMN region TEXT").run(); } catch {}
 }

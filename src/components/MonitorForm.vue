@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { useAuth } from '../composables/auth'
 import { useI18n } from '../composables/i18n'
+import { REGION_IDS, regionKey } from '../composables/regions'
 
 const { token } = useAuth()
 const { t } = useI18n()
@@ -16,6 +17,7 @@ const type = ref(props.monitor?.type ?? 'http')
 const url = ref(props.monitor?.url ?? '')
 const notifyEnabled = ref(props.monitor?.notify_enabled ?? 0)
 const notifyOn4xx = ref(props.monitor?.notify_on_4xx ?? 0)
+const region = ref(props.monitor?.region ?? '')
 const saving = ref(false)
 const error = ref('')
 
@@ -43,7 +45,7 @@ async function submit() {
     const isEdit = !!props.monitor
     const method = isEdit ? 'PUT' : 'POST'
     const path = isEdit ? `/api/monitors/${props.monitor.id}` : '/api/monitors'
-    const body: Record<string, unknown> = { name: name.value, url: url.value, type: type.value, notify_enabled: notifyEnabled.value, notify_on_4xx: notifyOn4xx.value }
+    const body: Record<string, unknown> = { name: name.value, url: url.value, type: type.value, notify_enabled: notifyEnabled.value, notify_on_4xx: notifyOn4xx.value, region: region.value || null }
     if (slug.value) body.slug = slug.value
     const res = await fetch(path, {
       method,
@@ -79,6 +81,12 @@ async function submit() {
       </select>
     </label>
     <label>{{ isTcp ? t('host') : t('url') }}<input v-model="url" :type="isTcp ? 'text' : 'url'" :placeholder="isTcp ? 'example.com:80' : 'https://example.com'" required /></label>
+    <label>{{ t('region') }}
+      <select v-model="region" class="type-select">
+        <option value="">{{ t('regionAuto') }}</option>
+        <option v-for="id in REGION_IDS" :key="id" :value="id">{{ t(regionKey(id)) }}</option>
+      </select>
+    </label>
     <fieldset class="notify-section">
       <legend>{{ t('notify') }}</legend>
       <label class="checkbox-label">

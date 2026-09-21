@@ -1,73 +1,19 @@
 import { getSettings } from "./api/settings";
+import { runCheck, type CheckResult } from "./check";
+import { isRegionId } from "./regions";
 
-async function checkUrl(
-  url: string,
-  timeoutMs: number
-): Promise<{
-  status_code?: number;
-  response_time_ms: number;
-  error?: string;
-}> {
-  const start = Date.now();
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetch(url, {
-      method: "GET",
-      signal: controller.signal,
-      redirect: "follow",
-      headers: { "User-Agent": "Uptime-Workers/1.0" },
+async function probe(env: Env, type: string, url: string, region: unknown): Promise<CheckResult> {
+  if (typeof region === "string" && region && isRegionId(region)) {
+    // ponytail: DO location hint is best-effort; region placement can shift under capacity pressure
+    const stub = env.REGION_PROBE.get(env.REGION_PROBE.idFromName(region), { locationHint: region });
+    const res = await stub.fetch("https://region-probe/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, url, timeoutMs: 15000 }),
     });
-    clearTimeout(timer);
-    return { status_code: res.status, response_time_ms: Date.now() - start };
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return { response_time_ms: Date.now() - start, error: msg };
+    return await res.json<CheckResult>();
   }
-}
-
-function parseHostPort(input: string): { host: string; port: number } | null {
-  const ipv6 = input.match(/^\[(.+)\]:(\d+)$/);
-  if (ipv6) return { host: ipv6[1]!, port: parseInt(ipv6[2]!) };
-  const lastColon = input.lastIndexOf(":");
-  if (lastColon === -1) return null;
-  const host = input.substring(0, lastColon);
-  const port = parseInt(input.substring(lastColon + 1));
-  if (!host || isNaN(port) || port < 1 || port > 65535) return null;
-  return { host, port };
-}
-
-async function tcpCheck(
-  host: string,
-  port: number,
-  timeoutMs: number
-): Promise<{
-  status_code?: number;
-  response_time_ms: number;
-  error?: string;
-}> {
-  const start = Date.now();
-  try {
-    // ponytail: cloudflare:sockets is the Workers-native TCP API
-    const { connect } = await import("cloudflare:sockets");
-    const socket = connect({ hostname: host, port });
-
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Connection timed out")), timeoutMs)
-    );
-
-    const connected = socket.writable.getWriter().close();
-    // ponytail: re-close and request an immediate GC
-
-    await Promise.race([connected, timeout]);
-
-    try { socket.close(); } catch {}
-
-    return { status_code: 200, response_time_ms: Date.now() - start };
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return { response_time_ms: Date.now() - start, error: msg };
-  }
+  return runCheck(type, url, 15000);
 }
 
 async function cleanupOldChecks(env: Env, monitorId: number, retentionDays: number) {
@@ -95,17 +41,13 @@ export async function runChecks(env: Env): Promise<void> {
     const type = (m.type as string) ?? "http";
     const url = m.url as string;
 
-    let result: { status_code?: number; response_time_ms: number; error?: string };
+    let result: CheckResult;
 
-    if (type === "tcp") {
-      const parsed = parseHostPort(url);
-      if (!parsed) {
-        result = { response_time_ms: 0, error: `Invalid host:port: ${url}` };
-      } else {
-        result = await tcpCheck(parsed.host, parsed.port, 15000);
-      }
-    } else {
-      result = await checkUrl(url, 15000);
+    try {
+      result = await probe(env, type, url, m.region);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      result = { response_time_ms: 0, error: `Probe failed: ${msg}` };
     }
 
     await env.DB.prepare(
