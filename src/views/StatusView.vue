@@ -93,8 +93,9 @@ async function poll() {
 
 function startPolling() {
   stopPolling()
+  // ponytail: 60s refresh — a 24h raw chart poll scans ~1440 D1 rows, so keep the rate low
   const slug = !!route.params.slug
-  pollTimer = setInterval(poll, slug ? 15_000 : 30_000)
+  pollTimer = setInterval(poll, 60_000)
 }
 
 function stopPolling() {

@@ -42,8 +42,10 @@ export async function initDb(db: D1Database) {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (monitor_id) REFERENCES monitors(id)
     )`),
-    db.prepare(`CREATE INDEX IF NOT EXISTS idx_checks_monitor_id ON checks(monitor_id)`),
-    db.prepare(`CREATE INDEX IF NOT EXISTS idx_checks_created_at ON checks(created_at)`),
+    // composite index so range/cleanup queries seek instead of scanning a monitor's whole history
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_checks_monitor_created ON checks(monitor_id, created_at)`),
+    db.prepare(`DROP INDEX IF EXISTS idx_checks_monitor_id`),
+    db.prepare(`DROP INDEX IF EXISTS idx_checks_created_at`),
     db.prepare(`CREATE TABLE IF NOT EXISTS announcements (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
